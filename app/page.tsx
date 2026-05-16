@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Terminal, Users, Briefcase, BarChart3 } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { useAccount, useBalance } from 'wagmi'
+import { Toaster } from 'react-hot-toast'
 import { TerminalTab } from '@/components/TerminalTab'
 import { AgentsTab } from '@/components/AgentsTab'
 import { JobsTab } from '@/components/JobsTab'
@@ -19,9 +21,27 @@ type TabId = typeof TABS[number]['id']
 
 export default function JobChainApp() {
   const [activeTab, setActiveTab] = useState<TabId>('terminal')
+  const { address, isConnected } = useAccount()
+  const { data: balance } = useBalance({ address })
 
   return (
     <div className="app-container">
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: '#24283B',
+            color: '#C0CAF5',
+            border: '1px solid #414868',
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '12px',
+            borderRadius: '8px',
+          },
+          success: { iconTheme: { primary: '#9ECE6A', secondary: '#1A1B26' } },
+          error: { iconTheme: { primary: '#F7768E', secondary: '#1A1B26' } },
+        }}
+      />
+
       <div className="warp-window">
         {/* Title Bar */}
         <div className="warp-titlebar">
@@ -66,11 +86,24 @@ export default function JobChainApp() {
               <span style={{ color: 'var(--warp-warning)' }}>■</span> USDC Escrow
             </div>
 
+            {/* Dynamic Balance */}
+            {isConnected && balance && (
+              <>
+                <div className="sidebar-section-label" style={{ marginTop: 24 }}>BALANCE</div>
+                <div className="sidebar-item">
+                  <span style={{ color: 'var(--warp-success)', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
+                    {parseFloat(balance.formatted).toFixed(4)}
+                  </span>
+                  <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>USDC</span>
+                </div>
+              </>
+            )}
+
             <div style={{ marginTop: 'auto', padding: '16px' }}>
               <div className="sidebar-section-label">WALLET</div>
               <div className="wallet-container">
                 <ConnectButton.Custom>
-                  {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
+                  {({ account, openConnectModal, openAccountModal, mounted }) => {
                     if (!mounted) return null
                     if (!account) {
                       return (

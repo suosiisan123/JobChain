@@ -1,7 +1,7 @@
 'use client'
 
 import { useReadContract } from 'wagmi'
-import { BarChart3, Users, Briefcase, Shield } from 'lucide-react'
+import { BarChart3, Users, Briefcase, Shield, ExternalLink } from 'lucide-react'
 import { JOBCHAIN_CONTRACT_ADDRESS, jobChainAbi } from '@/lib/contracts'
 
 export function DashboardTab() {
@@ -27,7 +27,7 @@ export function DashboardTab() {
         <span style={{ color: 'var(--warp-text)' }}> ./stats --live</span>
       </div>
       <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24 }}>
-        Protocol Analytics — Real-time on-chain metrics
+        Protocol Analytics — Real-time on-chain metrics from Arc Testnet
       </div>
 
       <div className="stats-grid">
@@ -54,19 +54,16 @@ export function DashboardTab() {
       </div>
 
       <div style={{ marginTop: 32 }}>
-        <div style={{ color: 'var(--warp-muted)', fontSize: 12, marginBottom: 12, fontWeight: 700, letterSpacing: '0.5px' }}>
-          CIRCLE PRODUCTS INTEGRATED
+        <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>
+          CIRCLE DEVELOPER PRODUCTS
         </div>
         <div className="integration-grid">
           {[
-            { name: 'USDC on Arc', status: 'active', desc: 'Escrow + Settlement + Staking' },
-            { name: 'ERC-8004', status: 'active', desc: 'Agent Identity NFTs' },
-            { name: 'ERC-8183', status: 'active', desc: 'Job Contract Protocol' },
-            { name: 'App Kit Send', status: 'active', desc: 'Payment Execution' },
-            { name: 'App Kit Bridge', status: 'active', desc: 'Cross-Chain Job Intake' },
-            { name: 'CCTP', status: 'active', desc: 'Multi-Chain USDC Bridge' },
-            { name: 'Circle Wallets', status: 'active', desc: 'RainbowKit Integration' },
-            { name: 'Gateway', status: 'active', desc: 'Treasury Routing' },
+            { name: 'USDC on Arc', status: 'active', desc: 'Native gas + escrow + staking settlements' },
+            { name: 'ERC-8004', status: 'active', desc: 'On-chain agent identity with capabilities' },
+            { name: 'ERC-8183', status: 'active', desc: 'Job contract protocol with escrow' },
+            { name: 'App Kit Send', status: 'active', desc: 'USDC payment via RainbowKit + wagmi' },
+            { name: 'Circle Wallets', status: 'active', desc: 'User-controlled via RainbowKit' },
           ].map((p, i) => (
             <div key={i} className="integration-item">
               <span className={`status-dot ${p.status === 'active' ? 'online' : ''}`} />
@@ -79,11 +76,24 @@ export function DashboardTab() {
         </div>
       </div>
 
+      {/* Contract Info */}
       <div style={{ marginTop: 32, borderTop: '1px dashed var(--warp-border)', paddingTop: 16 }}>
-        <div style={{ color: 'var(--warp-muted)', fontSize: 12, marginBottom: 8 }}>CONTRACT_ADDRESS:</div>
-        <a href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" className="tx-link" style={{ fontSize: 13 }}>
-          {JOBCHAIN_CONTRACT_ADDRESS} ↗
-        </a>
+        <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
+          DEPLOYED CONTRACT
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <code style={{ fontSize: 12, color: 'var(--warp-text)' }}>{JOBCHAIN_CONTRACT_ADDRESS}</code>
+          <a
+            href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`}
+            target="_blank" rel="noopener noreferrer"
+            className="tx-link" style={{ marginLeft: 0 }}
+          >
+            <ExternalLink size={12} /> arcscan
+          </a>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warp-muted)' }}>
+          Network: Arc Testnet (5042002) · Solidity 0.8.24 · Optimizer: 200 runs
+        </div>
       </div>
     </div>
   )

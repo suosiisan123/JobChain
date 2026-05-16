@@ -1,82 +1,112 @@
 'use client'
 
-import { useState } from 'react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
-import { parseUnits } from 'viem'
-import { UserPlus, Shield, Zap } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useAccount, useWriteContract, useReadContract, usePublicClient } from 'wagmi'
+import { parseUnits, formatUnits } from 'viem'
+import { UserPlus, Shield, Trophy, Star } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { JOBCHAIN_CONTRACT_ADDRESS, USDC_ADDRESS_ARC, jobChainAbi, usdcAbi } from '@/lib/contracts'
 
+interface AgentData {
+  id: number
+  owner: string
+  name: string
+  capabilities: string
+  stakedAmount: bigint
+  completedJobs: number
+  totalScore: number
+  failedJobs: number
+  isActive: boolean
+}
+
 export function AgentsTab() {
-  const { address, isConnected } = useAccount()
+  const { isConnected } = useAccount()
+  const publicClient = usePublicClient()
   const [name, setName] = useState('')
   const [capabilities, setCapabilities] = useState('')
   const [stakeAgentId, setStakeAgentId] = useState('')
   const [stakeAmount, setStakeAmount] = useState('')
-  const [output, setOutput] = useState<string[]>([])
+  const [agents, setAgents] = useState<AgentData[]>([])
+  const [loading, setLoading] = useState(false)
 
   const { writeContractAsync } = useWriteContract()
-
   const { data: nextAgentId } = useReadContract({
-    address: JOBCHAIN_CONTRACT_ADDRESS,
-    abi: jobChainAbi,
-    functionName: 'nextAgentId',
+    address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'nextAgentId',
   })
 
-  const addLog = (msg: string) => setOutput(prev => [...prev, `[${new Date().toISOString().slice(11, 19)}] ${msg}`])
+  // Fetch all agents from chain
+  useEffect(() => {
+    async function fetchAgents() {
+      if (!publicClient || !nextAgentId) return
+      const count = Number(nextAgentId)
+      const list: AgentData[] = []
+      for (let i = 0; i < count; i++) {
+        try {
+          const data = await publicClient.readContract({
+            address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
+            functionName: 'getAgent', args: [BigInt(i)],
+          }) as unknown as any[]
+          list.push({
+            id: i, owner: data[0], name: data[1], capabilities: data[2],
+            stakedAmount: data[3], completedJobs: Number(data[4]),
+            totalScore: Number(data[5]), failedJobs: Number(data[6]), isActive: data[7],
+          })
+        } catch { /* skip */ }
+      }
+      setAgents(list)
+    }
+    fetchAgents()
+  }, [publicClient, nextAgentId])
 
   const handleRegister = async () => {
     if (!isConnected || !name || !capabilities) {
-      addLog('ERROR: Connect wallet and fill all fields')
-      return
+      toast.error('Connect wallet and fill all fields'); return
     }
+    setLoading(true)
+    const tid = toast.loading('Broadcasting registerAgent...')
     try {
-      addLog(`> registerAgent("${name}", "${capabilities}")`)
       const hash = await writeContractAsync({
-        address: JOBCHAIN_CONTRACT_ADDRESS,
-        abi: jobChainAbi,
-        functionName: 'registerAgent',
-        args: [name, capabilities],
+        address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
+        functionName: 'registerAgent', args: [name, capabilities],
       })
-      addLog(`TX: ${hash}`)
-      addLog('SUCCESS: Agent registered ✓')
-      setName('')
-      setCapabilities('')
+      toast.success(
+        <span>Agent registered! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#7AA2F7',textDecoration:'underline'}}>View ↗</a></span>,
+        { id: tid, duration: 6000 }
+      )
+      setName(''); setCapabilities('')
     } catch (err: any) {
-      addLog(`ERROR: ${err?.shortMessage || err?.message || 'Failed'}`)
-    }
+      toast.error(err?.shortMessage || 'Transaction failed', { id: tid })
+    } finally { setLoading(false) }
   }
 
   const handleStake = async () => {
     if (!isConnected || !stakeAgentId || !stakeAmount) {
-      addLog('ERROR: Fill agent ID and stake amount')
-      return
+      toast.error('Fill agent ID and stake amount'); return
     }
+    setLoading(true)
+    const tid = toast.loading('Approving USDC...')
     try {
-      const amount = parseUnits(stakeAmount, 6) // USDC = 6 decimals
-      addLog(`> Approving ${stakeAmount} USDC for escrow...`)
-      
-      const approveHash = await writeContractAsync({
-        address: USDC_ADDRESS_ARC,
-        abi: usdcAbi,
-        functionName: 'approve',
+      const amount = parseUnits(stakeAmount, 6)
+      await writeContractAsync({
+        address: USDC_ADDRESS_ARC, abi: usdcAbi, functionName: 'approve',
         args: [JOBCHAIN_CONTRACT_ADDRESS, amount],
       })
-      addLog(`Approve TX: ${approveHash}`)
-
-      addLog(`> stakeCollateral(agentId=${stakeAgentId}, amount=${stakeAmount} USDC)`)
-      const stakeHash = await writeContractAsync({
-        address: JOBCHAIN_CONTRACT_ADDRESS,
-        abi: jobChainAbi,
-        functionName: 'stakeCollateral',
-        args: [BigInt(stakeAgentId), amount],
+      toast.loading('Staking collateral...', { id: tid })
+      const hash = await writeContractAsync({
+        address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
+        functionName: 'stakeCollateral', args: [BigInt(stakeAgentId), amount],
       })
-      addLog(`Stake TX: ${stakeHash}`)
-      addLog('SUCCESS: Collateral staked ✓')
+      toast.success(
+        <span>Staked {stakeAmount} USDC! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#7AA2F7',textDecoration:'underline'}}>View ↗</a></span>,
+        { id: tid, duration: 6000 }
+      )
       setStakeAmount('')
     } catch (err: any) {
-      addLog(`ERROR: ${err?.shortMessage || err?.message || 'Failed'}`)
-    }
+      toast.error(err?.shortMessage || 'Stake failed', { id: tid })
+    } finally { setLoading(false) }
   }
+
+  const getScore = (a: AgentData) => a.completedJobs > 0 ? (a.totalScore / a.completedJobs).toFixed(1) : '—'
 
   return (
     <div>
@@ -90,8 +120,64 @@ export function AgentsTab() {
         <br />Total Registered: {nextAgentId?.toString() || '0'} agents
       </div>
 
+      {/* ── Agent Leaderboard ── */}
+      {agents.length > 0 && (
+        <div style={{ marginLeft: 24, marginBottom: 24 }}>
+          <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
+            <Trophy size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+            AGENT LEADERBOARD
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Capabilities</th>
+                <th>Stake</th>
+                <th>Jobs</th>
+                <th>Score</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agents.map(a => (
+                <tr key={a.id}>
+                  <td style={{ color: 'var(--warp-primary)' }}>#{a.id}</td>
+                  <td style={{ color: 'var(--warp-text)', fontWeight: 600 }}>{a.name}</td>
+                  <td>
+                    {a.capabilities.split(',').map((c, i) => (
+                      <span key={i} className="tag">{c.trim()}</span>
+                    ))}
+                  </td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatUnits(a.stakedAmount, 6)} <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>USDC</span>
+                  </td>
+                  <td>
+                    <span style={{ color: 'var(--warp-success)' }}>{a.completedJobs}</span>
+                    {a.failedJobs > 0 && <span style={{ color: 'var(--warp-error)', marginLeft: 4 }}>/{a.failedJobs}✗</span>}
+                  </td>
+                  <td>
+                    {a.completedJobs > 0 ? (
+                      <span style={{ color: 'var(--warp-warning)' }}>
+                        <Star size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} />
+                        {getScore(a)}
+                      </span>
+                    ) : <span style={{ color: 'var(--warp-muted)' }}>—</span>}
+                  </td>
+                  <td>
+                    <span className={`status-badge ${a.isActive ? 'active' : 'inactive'}`}>
+                      {a.isActive ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Forms ── */}
       <div className="form-grid">
-        {/* Register Agent */}
         <div className="form-card">
           <div className="form-title"><UserPlus size={16} /> Register New Agent</div>
           <div className="form-field">
@@ -102,12 +188,11 @@ export function AgentsTab() {
             <label className="field-label" style={{ color: 'var(--warp-warning)' }}>CAPABILITIES (comma-separated)</label>
             <input className="warp-input" placeholder="nlp,sentiment,summarize" value={capabilities} onChange={e => setCapabilities(e.target.value)} />
           </div>
-          <button className="warp-btn" onClick={handleRegister} disabled={!isConnected}>
-            <UserPlus size={14} /> Register Agent (ERC-8004)
+          <button className="warp-btn" onClick={handleRegister} disabled={!isConnected || loading}>
+            <UserPlus size={14} /> {loading ? 'Processing...' : 'Register Agent (ERC-8004)'}
           </button>
         </div>
 
-        {/* Stake Collateral */}
         <div className="form-card">
           <div className="form-title"><Shield size={16} /> Stake Collateral</div>
           <div className="form-field">
@@ -118,23 +203,11 @@ export function AgentsTab() {
             <label className="field-label" style={{ color: 'var(--warp-success)' }}>STAKE_AMOUNT_USDC</label>
             <input className="warp-input" placeholder="5.00" type="number" step="0.01" value={stakeAmount} onChange={e => setStakeAmount(e.target.value)} />
           </div>
-          <button className="warp-btn secondary" onClick={handleStake} disabled={!isConnected}>
-            <Shield size={14} /> Stake USDC Collateral
+          <button className="warp-btn secondary" onClick={handleStake} disabled={!isConnected || loading}>
+            <Shield size={14} /> {loading ? 'Processing...' : 'Stake USDC Collateral'}
           </button>
         </div>
       </div>
-
-      {/* Output Log */}
-      {output.length > 0 && (
-        <div className="output-log">
-          <div style={{ color: 'var(--warp-muted)', fontSize: 12, marginBottom: 8 }}>STDOUT:</div>
-          {output.map((line, i) => (
-            <div key={i} style={{ color: line.includes('ERROR') ? 'var(--warp-error)' : line.includes('SUCCESS') ? 'var(--warp-success)' : 'var(--warp-text)', fontSize: 13 }}>
-              {line}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

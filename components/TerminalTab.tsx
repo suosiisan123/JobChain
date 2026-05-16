@@ -14,16 +14,12 @@ interface EventLine {
 
 export function TerminalTab() {
   const publicClient = usePublicClient()
-  const [lines, setLines] = useState<EventLine[]>([
-    { id: 0, timestamp: new Date().toISOString().slice(11, 19), type: 'system', message: 'JobChain Event Stream v2.0.0' },
-    { id: 1, timestamp: new Date().toISOString().slice(11, 19), type: 'system', message: 'Connected to Arc Testnet (wss://rpc.testnet.arc.network)' },
-    { id: 2, timestamp: new Date().toISOString().slice(11, 19), type: 'info', message: 'Watching JobChainV2 contract events...' },
-    { id: 3, timestamp: new Date().toISOString().slice(11, 19), type: 'info', message: `Contract: ${JOBCHAIN_CONTRACT_ADDRESS.slice(0, 10)}...${JOBCHAIN_CONTRACT_ADDRESS.slice(-6)}` },
-  ])
+  const [lines, setLines] = useState<EventLine[]>([])
+  const [initialized, setInitialized] = useState(false)
 
   const addLine = (type: EventLine['type'], message: string, txHash?: string) => {
     setLines(prev => [...prev, {
-      id: Date.now(),
+      id: Date.now() + Math.random(),
       timestamp: new Date().toISOString().slice(11, 19),
       type,
       message,
@@ -31,9 +27,22 @@ export function TerminalTab() {
     }])
   }
 
+  // Client-only initialization to avoid hydration mismatch
+  useEffect(() => {
+    if (!initialized) {
+      const ts = new Date().toISOString().slice(11, 19)
+      setLines([
+        { id: 0, timestamp: ts, type: 'system', message: 'JobChain Event Stream v2.0.0' },
+        { id: 1, timestamp: ts, type: 'system', message: 'Connected to Arc Testnet (wss://rpc.testnet.arc.network)' },
+        { id: 2, timestamp: ts, type: 'info', message: 'Watching JobChainV2 contract events...' },
+        { id: 3, timestamp: ts, type: 'info', message: `Contract: ${JOBCHAIN_CONTRACT_ADDRESS.slice(0, 10)}...${JOBCHAIN_CONTRACT_ADDRESS.slice(-6)}` },
+      ])
+      setInitialized(true)
+    }
+  }, [initialized])
+
   useEffect(() => {
     if (!publicClient || JOBCHAIN_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
-      addLine('error', 'Contract not deployed yet. Deploy with: npx hardhat run scripts/deploy.ts --network arcTestnet')
       return
     }
 
