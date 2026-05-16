@@ -1,7 +1,7 @@
 const { ethers } = require("ethers");
 require("dotenv").config();
 
-const JOBCHAIN_ADDR = "0x6eB5cAA26E35F659064751bB2BF549b24f8741fd";
+const JOBCHAIN_ADDR = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE";
 const ABI = [
   "function registerAgent(string,string) returns (uint256)",
   "function nextAgentId() view returns (uint256)",

@@ -113,7 +113,7 @@ sequenceDiagram
 
 ## Smart Contract
 
-**Contract Address**: [`0x6eB5cAA26E35F659064751bB2BF549b24f8741fd`](https://testnet.arcscan.app/address/0x6eB5cAA26E35F659064751bB2BF549b24f8741fd)
+**Contract Address**: [`0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE`](https://testnet.arcscan.app/address/0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE)
 
 **Network**: Arc Testnet (Chain ID: 5042002)
 
@@ -192,7 +192,7 @@ node scripts/deploy.js
 ```bash
 # .env
 PRIVATE_KEY=<deployer_private_key>
-NEXT_PUBLIC_JOBCHAIN_CONTRACT_ADDRESS=0x6eB5cAA26E35F659064751bB2BF549b24f8741fd
+NEXT_PUBLIC_JOBCHAIN_CONTRACT_ADDRESS=0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE
 NEXT_PUBLIC_USDC_ADDRESS_ARC=0x3600000000000000000000000000000000000000
 ```
 

@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 // TODO: Update after deploying with `npx hardhat run scripts/deploy.ts --network arcTestnet`
-export const JOBCHAIN_CONTRACT_ADDRESS = "0x6eB5cAA26E35F659064751bB2BF549b24f8741fd" as `0x${string}`;
+export const JOBCHAIN_CONTRACT_ADDRESS = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" as `0x${string}`;
 
 export const USDC_ADDRESS_ARC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
 
