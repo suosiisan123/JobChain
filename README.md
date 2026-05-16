@@ -96,24 +96,28 @@ sequenceDiagram
 
 ---
 
-## Circle Developer Products Integrated
+## Circle Developer Stack Integration
 
-| # | Product | Integration |
-|---|---------|-------------|
-| 1 | **USDC on Arc** | Native gas token + job escrow + agent staking |
-| 2 | **ERC-8004** | On-chain agent identity with capabilities registry |
-| 3 | **ERC-8183** | Programmable job contracts with escrow settlement |
-| 4 | **App Kit Send** | USDC payment execution for job settlements |
-| 5 | **App Kit Bridge** | Cross-chain job intake via CCTP |
-| 6 | **CCTP** | Multi-chain USDC bridging for cross-chain agents |
-| 7 | **Circle Wallets** | User-controlled wallets via RainbowKit |
-| 8 | **Gateway** | Protocol treasury fee routing |
+| # | Product | Integration | Status |
+|---|---------|-------------|--------|
+| 1 | **USDC on Arc** | Native gas token + job escrow payments + agent staking collateral | ✅ Active |
+| 2 | **ERC-8004 Identity** | Official `IdentityRegistry` (`0x8004A818…`) + `ReputationRegistry` (`0x8004B663…`) | ✅ Active |
+| 3 | **ERC-8183 Jobs** | Custom JobChainV2 contract with escrow funding, staking, slashing, and USDC settlement | ✅ Active |
+| 4 | **Wallet Integration** | Multi-wallet support via RainbowKit + wagmi v2 + viem (MetaMask, WalletConnect, Coinbase) | ✅ Active |
+| 5 | **Arc Testnet** | Deployed on Chain ID 5042002 with sub-second deterministic finality | ✅ Active |
 
 ---
 
-## Smart Contract
+## Smart Contracts
 
+### JobChainV2 (Custom)
 **Contract Address**: [`0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE`](https://testnet.arcscan.app/address/0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE)
+
+### Official ERC-8004 (Arc Standard)
+| Contract | Address |
+|----------|--------|
+| IdentityRegistry | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.arcscan.app/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
+| ReputationRegistry | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.arcscan.app/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
 
 **Network**: Arc Testnet (Chain ID: 5042002)
 
@@ -150,18 +154,19 @@ track-4-JobChain/
 ├── app/
 │   ├── globals.css          # Warp Terminal design system
 │   ├── layout.tsx           # Root layout with Web3Provider
-│   └── page.tsx             # Main app (4-tab terminal interface)
+│   └── page.tsx             # Main app (5-tab terminal interface)
 ├── components/
-│   ├── TerminalTab.tsx      # Live on-chain event stream
-│   ├── AgentsTab.tsx        # Agent registration + staking
+│   ├── TerminalTab.tsx      # Live on-chain event stream + history
+│   ├── IdentityTab.tsx      # Official ERC-8004 identity + reputation
+│   ├── AgentsTab.tsx        # JobChain agent registration + staking
 │   ├── JobsTab.tsx          # ERC-8183 job lifecycle
-│   └── DashboardTab.tsx     # Protocol analytics
+│   └── DashboardTab.tsx     # Protocol analytics + Recharts
 ├── contracts/
 │   ├── JobChainContract.sol # Original v1 (legacy)
 │   └── JobChainV2.sol       # Production contract (deployed)
 ├── lib/
 │   ├── arc-config.ts        # Arc Testnet chain definition
-│   ├── contracts.ts         # ABI + deployed addresses
+│   ├── contracts.ts         # ABI + deployed addresses (JobChainV2 + ERC-8004)
 │   └── web3-provider.tsx    # RainbowKit + wagmi setup
 ├── scripts/
 │   └── deploy.js            # Arc Testnet deploy script

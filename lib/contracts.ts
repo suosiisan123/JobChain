@@ -8,6 +8,73 @@ export const JOBCHAIN_CONTRACT_ADDRESS = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF
 export const USDC_ADDRESS_ARC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
 
 // ═══════════════════════════════════════════════════════════════
+// Official ERC-8004 Contracts on Arc Testnet
+// ═══════════════════════════════════════════════════════════════
+export const IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e" as `0x${string}`;
+export const REPUTATION_REGISTRY = "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`;
+
+export const identityRegistryAbi = [
+  {
+    inputs: [{ name: "metadataURI", type: "string" }],
+    name: "register",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    name: "ownerOf",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    name: "tokenURI",
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "owner", type: "address" }],
+    name: "balanceOf",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  // ERC-721 Transfer event for tracking agent registrations
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "from", type: "address" },
+      { indexed: true, name: "to", type: "address" },
+      { indexed: true, name: "tokenId", type: "uint256" },
+    ],
+    name: "Transfer",
+    type: "event",
+  },
+] as const;
+
+export const reputationRegistryAbi = [
+  {
+    inputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "score", type: "int128" },
+      { name: "category", type: "uint8" },
+      { name: "tag", type: "string" },
+      { name: "comment", type: "string" },
+      { name: "metadata", type: "string" },
+      { name: "attestation", type: "string" },
+      { name: "referenceHash", type: "bytes32" },
+    ],
+    name: "giveFeedback",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+] as const;
+
+// ═══════════════════════════════════════════════════════════════
 // USDC ERC-20 ABI (subset for approve + transferFrom)
 // ═══════════════════════════════════════════════════════════════
 export const usdcAbi = [

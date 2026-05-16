@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { usePublicClient } from 'wagmi'
+import { parseAbiItem } from 'viem'
 import { JOBCHAIN_CONTRACT_ADDRESS, jobChainAbi } from '@/lib/contracts'
 
 interface EventLine {
@@ -16,6 +17,15 @@ export function TerminalTab() {
   const publicClient = usePublicClient()
   const [lines, setLines] = useState<EventLine[]>([])
   const [initialized, setInitialized] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const outputRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when new lines are added
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight
+    }
+  }, [lines])
 
   const addLine = (type: EventLine['type'], message: string, txHash?: string) => {
     setLines(prev => [...prev, {
@@ -25,6 +35,10 @@ export function TerminalTab() {
       message,
       txHash,
     }])
+  }
+
+  const addLines = (newLines: EventLine[]) => {
+    setLines(prev => [...prev, ...newLines])
   }
 
   // Client-only initialization to avoid hydration mismatch
@@ -41,6 +55,102 @@ export function TerminalTab() {
     }
   }, [initialized])
 
+  // Load historical events from contract deployment
+  useEffect(() => {
+    if (!publicClient || historyLoaded || JOBCHAIN_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') return
+
+    async function loadHistory() {
+      try {
+        const latestBlock = await publicClient!.getBlockNumber()
+        const fromBlock = latestBlock > 50000n ? latestBlock - 50000n : 0n
+
+        const ts = new Date().toISOString().slice(11, 19)
+        const histLines: EventLine[] = [
+          { id: 10, timestamp: ts, type: 'info', message: `Loading historical events from block ${fromBlock.toString()}...` },
+        ]
+
+        // Fetch AgentRegistered events
+        try {
+          const agentLogs = await publicClient!.getContractEvents({
+            address: JOBCHAIN_CONTRACT_ADDRESS,
+            abi: jobChainAbi,
+            eventName: 'AgentRegistered',
+            fromBlock,
+            toBlock: latestBlock,
+          })
+          for (const log of agentLogs) {
+            const args = log.args as any
+            histLines.push({
+              id: Date.now() + Math.random(),
+              timestamp: ts,
+              type: 'event',
+              message: `[HISTORY] Agent registered: "${args.name}" | Capabilities: [${args.capabilities}]`,
+              txHash: log.transactionHash,
+            })
+          }
+        } catch { /* skip */ }
+
+        // Fetch JobPosted events
+        try {
+          const jobLogs = await publicClient!.getContractEvents({
+            address: JOBCHAIN_CONTRACT_ADDRESS,
+            abi: jobChainAbi,
+            eventName: 'JobPosted',
+            fromBlock,
+            toBlock: latestBlock,
+          })
+          for (const log of jobLogs) {
+            const args = log.args as any
+            const reward = args.reward ? (Number(args.reward) / 1e6).toFixed(2) : '?'
+            histLines.push({
+              id: Date.now() + Math.random(),
+              timestamp: ts,
+              type: 'event',
+              message: `[HISTORY] Job #${args.jobId} posted | Reward: ${reward} USDC | Skills: [${args.requiredCapabilities}]`,
+              txHash: log.transactionHash,
+            })
+          }
+        } catch { /* skip */ }
+
+        // Fetch PaymentReleased events
+        try {
+          const payLogs = await publicClient!.getContractEvents({
+            address: JOBCHAIN_CONTRACT_ADDRESS,
+            abi: jobChainAbi,
+            eventName: 'PaymentReleased',
+            fromBlock,
+            toBlock: latestBlock,
+          })
+          for (const log of payLogs) {
+            const args = log.args as any
+            const amount = args.amount ? (Number(args.amount) / 1e6).toFixed(6) : '?'
+            histLines.push({
+              id: Date.now() + Math.random(),
+              timestamp: ts,
+              type: 'success',
+              message: `[HISTORY] ✅ ${amount} USDC released to Agent #${args.agentId} for Job #${args.jobId}`,
+              txHash: log.transactionHash,
+            })
+          }
+        } catch { /* skip */ }
+
+        histLines.push({
+          id: Date.now() + Math.random(),
+          timestamp: ts,
+          type: 'system',
+          message: `Loaded ${histLines.length - 1} historical events. Now watching live...`,
+        })
+
+        addLines(histLines)
+      } catch (err) {
+        addLine('error', `Failed to load history: ${(err as any)?.message?.slice(0, 60) || 'Unknown error'}`)
+      }
+      setHistoryLoaded(true)
+    }
+    loadHistory()
+  }, [publicClient, historyLoaded])
+
+  // Real-time event watching
   useEffect(() => {
     if (!publicClient || JOBCHAIN_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
       return
@@ -83,6 +193,18 @@ export function TerminalTab() {
       },
     })
 
+    const unwatchResult = publicClient.watchContractEvent({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      eventName: 'ResultSubmitted',
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as any
+          addLine('event', `[SUBMIT] Agent #${args.agentId} submitted result for Job #${args.jobId} | Hash: ${(args.resultHash as string)?.slice(0, 16)}...`, log.transactionHash)
+        }
+      },
+    })
+
     const unwatchPayment = publicClient.watchContractEvent({
       address: JOBCHAIN_CONTRACT_ADDRESS,
       abi: jobChainAbi,
@@ -109,12 +231,26 @@ export function TerminalTab() {
       },
     })
 
+    const unwatchApproved = publicClient.watchContractEvent({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      eventName: 'JobApproved',
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as any
+          addLine('success', `[APPROVED] Job #${args.jobId} approved with rating: ${'★'.repeat(Number(args.rating))}${'☆'.repeat(5 - Number(args.rating))}`, log.transactionHash)
+        }
+      },
+    })
+
     return () => {
       unwatchAgentReg()
       unwatchJobPosted()
       unwatchPickup()
+      unwatchResult()
       unwatchPayment()
       unwatchSlash()
+      unwatchApproved()
     }
   }, [publicClient])
 
@@ -136,10 +272,10 @@ export function TerminalTab() {
         <span style={{ color: 'var(--warp-muted)' }}>git:(</span>
         <span style={{ color: 'var(--warp-error)' }}>main</span>
         <span style={{ color: 'var(--warp-muted)' }}>) </span>
-        <span style={{ color: 'var(--warp-text)' }}>./watch-events --live</span>
+        <span style={{ color: 'var(--warp-text)' }}>./watch-events --live --history</span>
       </div>
 
-      <div className="terminal-output">
+      <div className="terminal-output" ref={outputRef}>
         {lines.map(line => (
           <div key={line.id} className="terminal-line">
             <span style={{ color: 'var(--warp-muted)', marginRight: 8 }}>[{line.timestamp}]</span>

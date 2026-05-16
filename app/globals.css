@@ -97,7 +97,7 @@ body {
 }
 .status-dot.online { background: var(--warp-success); box-shadow: 0 0 6px var(--warp-success); }
 
-.warp-main { flex: 1; padding: 24px; overflow-y: auto; }
+.warp-main { flex: 1; padding: 24px; overflow-y: auto; overflow-x: hidden; }
 
 /* ── Prompt ── */
 .prompt-line {
@@ -108,8 +108,9 @@ body {
 
 /* ── Terminal View ── */
 .terminal-view { height: 100%; display: flex; flex-direction: column; }
-.terminal-output { flex: 1; margin-left: 24px; margin-top: 16px; }
-.terminal-line { font-size: 12px; line-height: 1.8; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.terminal-output { flex: 1; margin-left: 24px; margin-top: 16px; overflow-y: auto; max-height: calc(100vh - 200px); scroll-behavior: smooth; }
+.terminal-line { font-size: 12px; line-height: 1.8; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; animation: fadeInLine 0.3s ease; }
+@keyframes fadeInLine { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .tx-link {
   color: var(--warp-primary); text-decoration: none; font-size: 11px;
   margin-left: 8px; opacity: 0.7; transition: opacity 0.2s;
@@ -235,3 +236,33 @@ body {
 }
 .status-badge.active { color: var(--warp-success); }
 .status-badge.inactive { color: var(--warp-error); }
+
+/* ── Loading Skeleton ── */
+.skeleton {
+  background: linear-gradient(90deg, rgba(65,72,104,0.2) 25%, rgba(65,72,104,0.4) 50%, rgba(65,72,104,0.2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+/* ── Responsive Design ── */
+@media (max-width: 900px) {
+  .warp-sidebar { display: none; }
+  .warp-main { padding: 16px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .integration-grid { grid-template-columns: 1fr; }
+  .warp-tab { padding: 0 10px; font-size: 11px; }
+  .data-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .prompt-line { font-size: 12px; flex-wrap: wrap; }
+}
+
+@media (max-width: 600px) {
+  .app-container { padding: 4px; }
+  .warp-titlebar { padding: 0 8px; gap: 8px; }
+  .mac-buttons { display: none; }
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-value { font-size: 22px; }
+  .warp-main { padding: 12px; }
+}

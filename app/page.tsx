@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Terminal, Users, Briefcase, BarChart3 } from 'lucide-react'
+import { Terminal, Users, Briefcase, BarChart3, Fingerprint } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useBalance } from 'wagmi'
 import { Toaster } from 'react-hot-toast'
@@ -9,9 +9,11 @@ import { TerminalTab } from '@/components/TerminalTab'
 import { AgentsTab } from '@/components/AgentsTab'
 import { JobsTab } from '@/components/JobsTab'
 import { DashboardTab } from '@/components/DashboardTab'
+import { IdentityTab } from '@/components/IdentityTab'
 
 const TABS = [
   { id: 'terminal', label: '~/live-events', icon: Terminal },
+  { id: 'identity', label: 'erc-8004', icon: Fingerprint },
   { id: 'agents', label: 'agent-registry', icon: Users },
   { id: 'jobs', label: 'job-queue', icon: Briefcase },
   { id: 'dashboard', label: 'dashboard', icon: BarChart3 },
@@ -75,15 +77,18 @@ export default function JobChainApp() {
               <span className="status-dot" /> Chain ID: 5042002
             </div>
 
-            <div className="sidebar-section-label" style={{ marginTop: 24 }}>PROTOCOL</div>
+            <div className="sidebar-section-label" style={{ marginTop: 24 }}>CONTRACTS</div>
+            <a href="https://testnet.arcscan.app/address/0x8004A818BFB912233c491871b3d84c89A494BD9e" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
+              <span style={{ color: 'var(--warp-success)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>ERC-8004 Identity</span>
+            </a>
+            <a href="https://testnet.arcscan.app/address/0x8004B663056A597Dffe9eCcC1965A193B7388713" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
+              <span style={{ color: 'var(--warp-warning)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>ReputationRegistry</span>
+            </a>
+            <a href="https://testnet.arcscan.app/address/0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
+              <span style={{ color: 'var(--warp-cyan)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>JobChainV2</span>
+            </a>
             <div className="sidebar-item">
-              <span style={{ color: 'var(--warp-success)' }}>■</span> ERC-8004 Identity
-            </div>
-            <div className="sidebar-item">
-              <span style={{ color: 'var(--warp-cyan)' }}>■</span> ERC-8183 Jobs
-            </div>
-            <div className="sidebar-item">
-              <span style={{ color: 'var(--warp-warning)' }}>■</span> USDC Escrow
+              <span style={{ color: 'var(--warp-magenta)' }}>■</span> USDC Escrow
             </div>
 
             {/* Dynamic Balance */}
@@ -129,6 +134,7 @@ export default function JobChainApp() {
           {/* Main Content Area */}
           <div className="warp-main">
             {activeTab === 'terminal' && <TerminalTab />}
+            {activeTab === 'identity' && <IdentityTab />}
             {activeTab === 'agents' && <AgentsTab />}
             {activeTab === 'jobs' && <JobsTab />}
             {activeTab === 'dashboard' && <DashboardTab />}
