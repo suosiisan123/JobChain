@@ -1,4 +1,4 @@
-# Logs
+# Logs & Debugging
 logs
 *.log
 npm-debug.log*
@@ -11,37 +11,36 @@ node_modules/
 .pnp
 .pnp.js
 
-# Environment
+# Environment & Secrets
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.env
+.env.*
+!.env.example
+*.key
+*.pem
 
-# Cache
+# Cache & Temporary Files
 .cache/
+.eslintcache
+.turbo/
 
-# Editor
+# Editor & OS Files
 .vscode/*
 !.vscode/extensions.json
 .idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Build
+# Build & Deployment
 dist/
 build/
 out/
 .next/
 .vercel/
-.turbo/
-
-# Custom / Existing Rules
 *.tsbuildinfo
 next-env.d.ts
 
@@ -49,3 +48,6 @@ next-env.d.ts
 artifacts/
 cache/
 typechain-types/
+coverage/
+coverage.json
+gas-reporter.txt
