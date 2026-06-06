@@ -6,6 +6,7 @@
 export const JOBCHAIN_CONTRACT_ADDRESS = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" as `0x${string}`;
 
 export const USDC_ADDRESS_ARC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
+export const EURC_ADDRESS_ARC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" as `0x${string}`;
 
 // ═══════════════════════════════════════════════════════════════
 // Official ERC-8004 Contracts on Arc Testnet
@@ -148,9 +149,17 @@ export const jobChainAbi = [
       { name: "_requiredCapabilities", type: "string" },
       { name: "_reward", type: "uint256" },
       { name: "_deadline", type: "uint256" },
+      { name: "_paymentToken", type: "address" },
     ],
     name: "postJob",
     outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_agentId", type: "uint256" }, { name: "_token", type: "address" }],
+    name: "setAgentPayoutToken",
+    outputs: [],
     stateMutability: "nonpayable",
     type: "function"
   },
@@ -203,6 +212,7 @@ export const jobChainAbi = [
       { name: "resultHash", type: "string" },
       { name: "rating", type: "uint8" },
       { name: "createdAt", type: "uint256" },
+      { name: "paymentToken", type: "address" },
     ],
     stateMutability: "view",
     type: "function"
