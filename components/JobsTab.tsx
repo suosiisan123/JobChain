@@ -9,6 +9,7 @@ import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
   JOBCHAIN_CONTRACT_ADDRESS,
   USDC_ADDRESS_ARC,
+  EURC_ADDRESS_ARC,
   IDENTITY_REGISTRY,
   identityRegistryAbi,
   jobChainAbi,
@@ -27,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 interface JobData {
   id: number; poster: string; description: string; requiredCapabilities: string
   reward: bigint; deadline: number; assignedAgent: number
-  status: number; resultHash: string; rating: number; createdAt: number
+  status: number; resultHash: string; rating: number; createdAt: number; paymentToken: string
 }
 
 export function JobsTab() {
@@ -39,6 +40,34 @@ export function JobsTab() {
   const [skills, setSkills] = useState('')
   const [reward, setReward] = useState('')
   const [deadlineHours, setDeadlineHours] = useState('24')
+
+  // Multi-currency & Forex states
+  const [paymentCurrency, setPaymentCurrency] = useState<'USDC' | 'EURC'>('USDC')
+  const [forexRate, setForexRate] = useState<number>(1.0825)
+  const [forexLoading, setForexLoading] = useState(false)
+  const [prefAgentId, setPrefAgentId] = useState('')
+  const [prefToken, setPrefToken] = useState<'USDC' | 'EURC'>('USDC')
+
+  // Fetch live Forex quote from StableFX
+  useEffect(() => {
+    async function fetchQuote() {
+      try {
+        setForexLoading(true)
+        const res = await fetch('/api/forex/quote?base=EURC&target=USDC')
+        const data = await res.json()
+        if (res.ok) {
+          setForexRate(data.rate)
+        }
+      } catch (err) {
+        console.error('Failed to fetch forex quote:', err)
+      } finally {
+        setForexLoading(false)
+      }
+    }
+    fetchQuote()
+    const timer = setInterval(fetchQuote, 10000)
+    return () => clearInterval(timer)
+  }, [])
 
   // CCTP Bridge configurations
   const [selectedChainId, setSelectedChainId] = useState<number>(5042002) // default Arc Testnet Direct
@@ -89,6 +118,7 @@ export function JobsTab() {
             id: i, poster: d[0], description: d[1], requiredCapabilities: d[2],
             reward: d[3], deadline: Number(d[4]), assignedAgent: Number(d[5]),
             status: Number(d[6]), resultHash: d[7], rating: Number(d[8]), createdAt: Number(d[9]),
+            paymentToken: d[10] || USDC_ADDRESS_ARC
           })
         } catch { /* skip */ }
       }
@@ -114,8 +144,14 @@ export function JobsTab() {
   const handlePostJob = () => txToast('Posting job...', async () => {
     const amount = parseUnits(reward, 6)
     const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
-    await writeContractAsync({ address: USDC_ADDRESS_ARC, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, amount] })
-    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'postJob', args: [desc, skills, amount, deadline] })
+    const tokenAddress = paymentCurrency === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
+    await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, amount] })
+    const hash = await writeContractAsync({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      functionName: 'postJob',
+      args: [desc, skills, amount, deadline, tokenAddress]
+    })
     setDesc(''); setSkills(''); setReward('')
     return hash
   })
@@ -166,6 +202,17 @@ export function JobsTab() {
     return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'pickupJob', args: [BigInt(pickupJobId), BigInt(pickupAgentId)] })
   })
 
+  const handleSetPreference = () => txToast('Updating agent payout preference...', async () => {
+    if (!prefAgentId) throw new Error('Agent ID is required')
+    const tokenAddress = prefToken === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
+    return await writeContractAsync({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      functionName: 'setAgentPayoutToken',
+      args: [BigInt(prefAgentId), tokenAddress]
+    })
+  })
+
   const handleSubmit = () => txToast('Submitting result...', async () => {
     return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'submitResult', args: [BigInt(submitJobId), resultHash] })
   })
@@ -211,7 +258,9 @@ export function JobsTab() {
                   <td style={{ color: 'var(--warp-text)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.description}</td>
                   <td>{j.requiredCapabilities.split(',').map((c, i) => <span key={i} className="tag">{c.trim()}</span>)}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--warp-success)' }}>
-                    {formatUnits(j.reward, 6)} <span style={{ fontSize: 10, color: 'var(--warp-muted)' }}>USDC</span>
+                    {formatUnits(j.reward, 6)} <span style={{ fontSize: 10, color: 'var(--warp-muted)' }}>
+                      {j.paymentToken?.toLowerCase() === EURC_ADDRESS_ARC.toLowerCase() ? 'EURC' : 'USDC'}
+                    </span>
                   </td>
                   <td style={{ fontSize: 11 }}>
                     <Clock size={10} style={{ marginRight: 3, verticalAlign: 'middle' }} />
@@ -252,6 +301,21 @@ export function JobsTab() {
             </select>
           </div>
 
+          {selectedChainId === 5042002 && (
+            <div className="form-field">
+              <label className="field-label" style={{color:'var(--warp-success)'}}>PAYMENT CURRENCY</label>
+              <select
+                className="warp-input"
+                value={paymentCurrency}
+                onChange={(e) => setPaymentCurrency(e.target.value as 'USDC' | 'EURC')}
+                style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
+              >
+                <option value="USDC">USDC (USD Stablecoin)</option>
+                <option value="EURC">EURC (Euro Stablecoin)</option>
+              </select>
+            </div>
+          )}
+
           {selectedChainId !== 5042002 && (
             <div style={{ marginBottom: 16, padding: 12, background: '#1A1B26', borderRadius: 8, border: '1px solid #292E42' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
@@ -288,9 +352,44 @@ export function JobsTab() {
           <div className="form-field"><label className="field-label" style={{color:'var(--warp-magenta)'}}>DESCRIPTION</label><input className="warp-input" placeholder="Analyze sentiment of 100 tweets" value={desc} onChange={e=>setDesc(e.target.value)}/></div>
           <div className="form-field"><label className="field-label" style={{color:'var(--warp-warning)'}}>CAPABILITIES</label><input className="warp-input" placeholder="nlp,sentiment" value={skills} onChange={e=>setSkills(e.target.value)}/></div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>REWARD_USDC</label><input className="warp-input" placeholder="5.00" type="number" value={reward} onChange={e=>setReward(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}>
+              <label className="field-label" style={{color:'var(--warp-success)'}}>REWARD ({selectedChainId === 5042002 ? paymentCurrency : 'USDC'})</label>
+              <input className="warp-input" placeholder="5.00" type="number" value={reward} onChange={e=>setReward(e.target.value)}/>
+            </div>
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE_H</label><input className="warp-input" type="number" value={deadlineHours} onChange={e=>setDeadlineHours(e.target.value)}/></div>
           </div>
+
+          {selectedChainId === 5042002 && reward && parseFloat(reward) > 0 && (
+            <div style={{ margin: '12px 0', padding: 10, background: '#1F2335', borderRadius: 6, border: '1px solid #3B4261', fontSize: 11 }}>
+              <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>StableFX Exchange Preview:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Deposit Escrow:</span>
+                <span style={{ color: 'var(--warp-success)', fontWeight: 'bold' }}>{reward} {paymentCurrency}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Estimated Payout:</span>
+                <span style={{ color: 'var(--warp-text)' }}>
+                  {paymentCurrency === 'EURC'
+                    ? `~${(parseFloat(reward) * forexRate).toFixed(4)} USDC`
+                    : `~${(parseFloat(reward) / forexRate).toFixed(4)} EURC`
+                  }
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Slippage Min Out (5%):</span>
+                <span style={{ color: 'var(--warp-warning)' }}>
+                  {paymentCurrency === 'EURC'
+                    ? `~${(parseFloat(reward) * forexRate * 0.95).toFixed(4)} USDC`
+                    : `~${(parseFloat(reward) / forexRate * 0.95).toFixed(4)} EURC`
+                  }
+                </span>
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--warp-muted)', marginTop: 6, fontStyle: 'italic' }}>
+                * StableFX feed rate: 1 EURC = {forexRate.toFixed(4)} USDC
+              </div>
+            </div>
+          )}
+
           <button className="warp-btn" onClick={handlePostJobWrapper} disabled={!isConnected||loading||!desc||!skills||!reward}><Briefcase size={14}/> {loading?'Processing...':'Post Job'}</button>
         </div>
 
@@ -318,7 +417,27 @@ export function JobsTab() {
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={approveJobId} onChange={e=>setApproveJobId(e.target.value)}/></div>
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>RATING (1-5)</label><input className="warp-input" type="number" min="1" max="5" value={rating} onChange={e=>setRating(e.target.value)}/></div>
           </div>
-          <button className="warp-btn" onClick={handleApprove} disabled={!isConnected||loading} style={{background:'var(--warp-success)'}}><CheckCircle size={14}/> Release USDC</button>
+          <button className="warp-btn" onClick={handleApprove} disabled={!isConnected||loading} style={{background:'var(--warp-success)'}}><CheckCircle size={14}/> Release Payment</button>
+        </div>
+
+        <div className="form-card">
+          <div className="form-title" style={{color:'var(--warp-cyan)'}}><Briefcase size={16} /> Agent Payout preference</div>
+          <div style={{display:'flex',gap:12}}>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>AGENT_ID</label><input className="warp-input" type="number" placeholder="1" value={prefAgentId} onChange={e=>setPrefAgentId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}>
+              <label className="field-label" style={{color:'var(--warp-success)'}}>PREFERENCE</label>
+              <select
+                className="warp-input"
+                value={prefToken}
+                onChange={(e) => setPrefToken(e.target.value as 'USDC' | 'EURC')}
+                style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
+              >
+                <option value="USDC">USDC Payout</option>
+                <option value="EURC">EURC Payout</option>
+              </select>
+            </div>
+          </div>
+          <button className="warp-btn secondary" onClick={handleSetPreference} disabled={!isConnected||loading}><Briefcase size={14}/> Set Preference</button>
         </div>
       </div>
     </div>
