@@ -22,6 +22,8 @@ node_modules/
 .cache/
 .eslintcache
 .turbo/
+lib/agent-wallets-db.json
+
 
 # Editor & OS Files
 .vscode/*
