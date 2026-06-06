@@ -33,6 +33,9 @@ export interface SmartWalletContextType {
     functionName: string
     args?: any[]
   }) => Promise<`0x${string}`>
+  isSponsored: boolean
+  paymasterUrl: string | null
+  checkSponsorshipEligibility: (functionName: string, contractAddress: string) => Promise<{ eligible: boolean, reason?: string, paymasterUrl?: string }>
 }
 
 export const SmartWalletContext = createContext<SmartWalletContextType | null>(null)
@@ -58,6 +61,32 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
 
   const [passkeyAddress, setPasskeyAddress] = useState<string | undefined>(undefined)
   const [passkeyEmail, setPasskeyEmail] = useState<string | null>(null)
+  
+  const [isSponsoredState, setIsSponsoredState] = useState(false)
+  const [paymasterUrlState, setPaymasterUrlState] = useState<string | null>(null)
+
+  const checkSponsorshipEligibility = async (functionName: string, contractAddress: string) => {
+    const userAddr = eoaAddress || passkeyAddress || '0x0000000000000000000000000000000000000000'
+    try {
+      const checkRes = await fetch('/api/gas-sponsor/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: userAddr,
+          functionName,
+          contractAddress
+        })
+      })
+      const checkData = await checkRes.json()
+      if (checkRes.ok && checkData.eligible) {
+        return { eligible: true, paymasterUrl: checkData.paymasterUrl }
+      } else {
+        return { eligible: false, reason: checkData.reason || 'Not eligible' }
+      }
+    } catch (err: any) {
+      return { eligible: false, reason: err.message || 'Error checking eligibility' }
+    }
+  }
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -174,6 +203,27 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
     }
 
     if (passkeyAddress && passkeyEmail) {
+      let isSponsoredTx = false
+      let paymasterRpcUrl = ''
+
+      try {
+        const checkSponsor = await checkSponsorshipEligibility(args.functionName, args.address)
+        if (checkSponsor.eligible && checkSponsor.paymasterUrl) {
+          isSponsoredTx = true
+          paymasterRpcUrl = checkSponsor.paymasterUrl
+          setIsSponsoredState(true)
+          setPaymasterUrlState(checkSponsor.paymasterUrl)
+          toast.success('Gas fees for this transaction are sponsored by Circle!')
+        } else {
+          setIsSponsoredState(false)
+          setPaymasterUrlState(null)
+          console.warn('Sponsorship not active or limit reached:', checkSponsor.reason)
+          toast.error(`Sponsorship unavailable: ${checkSponsor.reason || 'using user-paid gas fallback'}`)
+        }
+      } catch (err) {
+        console.error('Error during sponsorship check, falling back to self-paid:', err)
+      }
+
       const txChallengeRes = await fetch('/api/passkey/challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,6 +260,8 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
           abiFunctionSignature,
           abiParameters: args.args || [],
           functionName: args.functionName,
+          isSponsored: isSponsoredTx,
+          paymasterUrl: paymasterRpcUrl
         })
       })
 
@@ -255,7 +307,10 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
       email: passkeyEmail,
       login,
       logout,
-      writeContractAsync
+      writeContractAsync,
+      isSponsored: isSponsoredState,
+      paymasterUrl: paymasterUrlState,
+      checkSponsorshipEligibility
     }}>
       {children}
     </SmartWalletContext.Provider>
