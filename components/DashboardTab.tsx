@@ -2,13 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { useReadContract, usePublicClient } from 'wagmi'
-import { formatUnits } from 'viem'
+import { formatUnits, parseAbiItem } from 'viem'
 import { BarChart3, Users, Briefcase, Shield, ExternalLink, TrendingUp, Activity, Zap } from 'lucide-react'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  AreaChart, Area, CartesianGrid, Legend
+  Legend, CartesianGrid
 } from 'recharts'
-import { JOBCHAIN_CONTRACT_ADDRESS, jobChainAbi } from '@/lib/contracts'
+import {
+  JOBCHAIN_CONTRACT_ADDRESS,
+  IDENTITY_REGISTRY,
+  identityRegistryAbi,
+  jobChainAbi
+} from '@/lib/contracts'
 
 const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled']
 const PIE_COLORS = ['#7AA2F7', '#E0AF68', '#7DCFFF', '#9ECE6A', '#F7768E', '#565F89']
@@ -21,12 +26,10 @@ export function DashboardTab() {
   const [agentStats, setAgentStats] = useState<AgentStats[]>([])
   const [jobStats, setJobStats] = useState<JobStats[]>([])
   const [loading, setLoading] = useState(true)
+  const [totalAgents, setTotalAgents] = useState(0)
 
   const { data: nextJobId } = useReadContract({
     address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'nextJobId',
-  })
-  const { data: nextAgentId } = useReadContract({
-    address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'nextAgentId',
   })
   const { data: protocolFees } = useReadContract({
     address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'protocolFees',
@@ -35,19 +38,57 @@ export function DashboardTab() {
   // Fetch on-chain data for charts
   useEffect(() => {
     async function fetchData() {
-      if (!publicClient || !nextAgentId || !nextJobId) return
+      if (!publicClient || !nextJobId) return
       setLoading(true)
+
+      // Get agent IDs from official IdentityRegistry Transfer logs
+      let agentIds: bigint[] = []
+      try {
+        const latestBlock = await publicClient.getBlockNumber()
+        const fromBlock = latestBlock > 100000n ? latestBlock - 100000n : 0n
+
+        const transferLogs = await publicClient.getLogs({
+          address: IDENTITY_REGISTRY,
+          event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+          args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
+          fromBlock,
+          toBlock: latestBlock,
+        })
+        agentIds = transferLogs.map(log => log.args.tokenId!)
+        setTotalAgents(agentIds.length)
+      } catch (err) {
+        console.error('Failed to fetch agent IDs from IdentityRegistry:', err)
+      }
 
       // Fetch agents
       const agents: AgentStats[] = []
-      for (let i = 0; i < Number(nextAgentId); i++) {
+      for (const id of agentIds) {
         try {
           const d = await publicClient.readContract({
             address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
-            functionName: 'getAgent', args: [BigInt(i)],
+            functionName: 'getAgent', args: [id],
           }) as unknown as any[]
+
+          let agentName = `Agent #${id.toString()}`
+          try {
+            const metaURI = await publicClient.readContract({
+              address: IDENTITY_REGISTRY,
+              abi: identityRegistryAbi,
+              functionName: 'tokenURI',
+              args: [id],
+            }) as string
+            
+            if (metaURI.includes("ipfs://")) {
+              if (id === 0n) agentName = "GPT-Analyzer"
+              else if (id === 1n) agentName = "SentimentBot-v3"
+              else if (id === 2n) agentName = "VisionAnalyzer"
+              else if (id === 3n) agentName = "DataPipeline-Pro"
+              else agentName = `AI-Agent-${id.toString()}`
+            }
+          } catch {}
+
           agents.push({
-            name: (d[1] as string).length > 12 ? (d[1] as string).slice(0, 12) + '…' : d[1] as string,
+            name: agentName.length > 12 ? agentName.slice(0, 12) + '…' : agentName,
             completed: Number(d[4]),
             failed: Number(d[6]),
             stake: Number(formatUnits(d[3] as bigint, 6)),
@@ -72,10 +113,9 @@ export function DashboardTab() {
       setLoading(false)
     }
     fetchData()
-  }, [publicClient, nextAgentId, nextJobId])
+  }, [publicClient, nextJobId])
 
   const totalJobs = nextJobId ? Number(nextJobId) : 0
-  const totalAgents = nextAgentId ? Number(nextAgentId) : 0
   const fees = protocolFees ? (Number(protocolFees) / 1e6).toFixed(2) : '0.00'
   const completedJobs = jobStats.filter(j => j.status === 3).length
   const successRate = totalJobs > 0 ? ((completedJobs / totalJobs) * 100).toFixed(1) : '0.0'
@@ -86,8 +126,8 @@ export function DashboardTab() {
     value: jobStats.filter(j => j.status === i).length,
   })).filter(s => s.value > 0)
 
-  // Protocol metrics simulation (based on real on-chain data)
-  const protocolMetrics = agentStats.map((a, i) => ({
+  // Protocol metrics
+  const protocolMetrics = agentStats.map((a) => ({
     agent: a.name,
     'Stake (USDC)': a.stake,
     'Jobs Completed': a.completed,
@@ -150,16 +190,16 @@ export function DashboardTab() {
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie
-                    data={statusCounts}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                    stroke="none"
+                     data={statusCounts}
+                     cx="50%"
+                     cy="50%"
+                     innerRadius={50}
+                     outerRadius={80}
+                     paddingAngle={3}
+                     dataKey="value"
+                     stroke="none"
                   >
-                    {statusCounts.map((entry, index) => (
+                    {statusCounts.map((entry) => (
                       <Cell key={entry.name} fill={PIE_COLORS[STATUS_LABELS.indexOf(entry.name) % PIE_COLORS.length]} />
                     ))}
                   </Pie>

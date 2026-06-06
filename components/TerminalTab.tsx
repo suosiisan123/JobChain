@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { usePublicClient } from 'wagmi'
 import { parseAbiItem } from 'viem'
-import { JOBCHAIN_CONTRACT_ADDRESS, jobChainAbi } from '@/lib/contracts'
+import { JOBCHAIN_CONTRACT_ADDRESS, IDENTITY_REGISTRY, jobChainAbi } from '@/lib/contracts'
 
 interface EventLine {
   id: number
@@ -69,12 +69,12 @@ export function TerminalTab() {
           { id: 10, timestamp: ts, type: 'info', message: `Loading historical events from block ${fromBlock.toString()}...` },
         ]
 
-        // Fetch AgentRegistered events
+        // Fetch Agent Registration Transfer events from official IdentityRegistry
         try {
-          const agentLogs = await publicClient!.getContractEvents({
-            address: JOBCHAIN_CONTRACT_ADDRESS,
-            abi: jobChainAbi,
-            eventName: 'AgentRegistered',
+          const agentLogs = await publicClient!.getLogs({
+            address: IDENTITY_REGISTRY,
+            event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+            args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
             fromBlock,
             toBlock: latestBlock,
           })
@@ -84,7 +84,7 @@ export function TerminalTab() {
               id: Date.now() + Math.random(),
               timestamp: ts,
               type: 'event',
-              message: `[HISTORY] Agent registered: "${args.name}" | Capabilities: [${args.capabilities}]`,
+              message: `[HISTORY] ERC-8004 Agent Registered: Token ID #${args.tokenId} | Owner: ${args.to}`,
               txHash: log.transactionHash,
             })
           }
@@ -156,14 +156,15 @@ export function TerminalTab() {
       return
     }
 
-    const unwatchAgentReg = publicClient.watchContractEvent({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
-      eventName: 'AgentRegistered',
+    // Watch ERC-8004 IdentityRegistry for new agent tokens
+    const unwatchAgentReg = publicClient.watchEvent({
+      address: IDENTITY_REGISTRY,
+      event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+      args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
       onLogs: (logs) => {
         for (const log of logs) {
           const args = log.args as any
-          addLine('event', `[AGENT] Registered: "${args.name}" | Capabilities: [${args.capabilities}] | Owner: ${(args.owner as string)?.slice(0, 8)}...`, log.transactionHash)
+          addLine('event', `[IDENTITY] New Agent Token #${args.tokenId} registered on ERC-8004. Owner: ${(args.to as string)?.slice(0, 8)}...`, log.transactionHash)
         }
       },
     })

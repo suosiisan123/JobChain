@@ -3,9 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, usePublicClient } from 'wagmi'
 import { parseUnits, formatUnits } from 'viem'
-import { Briefcase, Play, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { Briefcase, Play, CheckCircle, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { JOBCHAIN_CONTRACT_ADDRESS, USDC_ADDRESS_ARC, jobChainAbi, usdcAbi } from '@/lib/contracts'
+import {
+  JOBCHAIN_CONTRACT_ADDRESS,
+  USDC_ADDRESS_ARC,
+  IDENTITY_REGISTRY,
+  identityRegistryAbi,
+  jobChainAbi,
+  usdcAbi
+} from '@/lib/contracts'
 
 const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled'] as const
 const STATUS_COLORS: Record<string, string> = {
@@ -74,7 +81,7 @@ export function JobsTab() {
         { id: tid, duration: 6000 }
       )
     } catch (err: any) {
-      toast.error(err?.shortMessage || 'Failed', { id: tid })
+      toast.error(err?.shortMessage || err?.message || 'Failed', { id: tid })
     } finally { setLoading(false) }
   }
 
@@ -88,6 +95,24 @@ export function JobsTab() {
   })
 
   const handlePickup = () => txToast('Claiming job...', async () => {
+    if (!pickupAgentId) throw new Error('Agent ID is required')
+    
+    // Validate agent ID on the official IdentityRegistry
+    try {
+      const owner = await publicClient!.readContract({
+        address: IDENTITY_REGISTRY,
+        abi: identityRegistryAbi,
+        functionName: 'ownerOf',
+        args: [BigInt(pickupAgentId)],
+      }) as string
+
+      if (!owner || owner === '0x0000000000000000000000000000000000000000') {
+        throw new Error('Agent ID is not registered')
+      }
+    } catch (err) {
+      throw new Error('Agent ID is not registered on official ERC-8004 IdentityRegistry')
+    }
+
     return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'pickupJob', args: [BigInt(pickupJobId), BigInt(pickupAgentId)] })
   })
 
@@ -115,7 +140,7 @@ export function JobsTab() {
         <span style={{ color: 'var(--warp-text)' }}> ./manage-jobs</span>
       </div>
       <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24 }}>
-        ERC-8183 Job Protocol — Post, Claim, Submit, Approve | Total: {nextJobId?.toString() || '0'}
+        ERC-8183 Job Protocol — Post, Claim, Submit, Approve | Total: {jobs.length} jobs
       </div>
 
       {/* ── Job Queue Table ── */}
@@ -123,7 +148,7 @@ export function JobsTab() {
         <div style={{ marginLeft: 24, marginBottom: 24 }}>
           <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
             <Briefcase size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-            JOB QUEUE
+            JOB QUEUE (ERC-8183)
           </div>
           <table className="data-table">
             <thead>

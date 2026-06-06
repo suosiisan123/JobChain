@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Terminal, Users, Briefcase, BarChart3, Fingerprint } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useBalance } from 'wagmi'
@@ -25,6 +25,25 @@ export default function JobChainApp() {
   const [activeTab, setActiveTab] = useState<TabId>('terminal')
   const { address, isConnected } = useAccount()
   const { data: balance } = useBalance({ address })
+  const [circleStatus, setCircleStatus] = useState<'Active' | 'Simulated' | 'Checking'>('Checking')
+
+  // Check Circle Integration Status
+  useEffect(() => {
+    async function checkCircle() {
+      try {
+        const res = await fetch('/api/agent-wallet/list')
+        const data = await res.json()
+        if (data.simulated === false) {
+          setCircleStatus('Active')
+        } else {
+          setCircleStatus('Simulated')
+        }
+      } catch {
+        setCircleStatus('Simulated')
+      }
+    }
+    checkCircle()
+  }, [])
 
   return (
     <div className="app-container">
@@ -75,6 +94,12 @@ export default function JobChainApp() {
             </div>
             <div className="sidebar-item">
               <span className="status-dot" /> Chain ID: 5042002
+            </div>
+
+            <div className="sidebar-section-label" style={{ marginTop: 24 }}>CIRCLE STACK</div>
+            <div className="sidebar-item">
+              <span className={`status-dot ${circleStatus === 'Active' ? 'online' : 'away'}`} />
+              <span>Programmatic: {circleStatus}</span>
             </div>
 
             <div className="sidebar-section-label" style={{ marginTop: 24 }}>CONTRACTS</div>

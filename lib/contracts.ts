@@ -105,14 +105,7 @@ export const usdcAbi = [
 // JobChainV2 Full ABI
 // ═══════════════════════════════════════════════════════════════
 export const jobChainAbi = [
-  // ── Agent Registry ──
-  {
-    inputs: [{ name: "_name", type: "string" }, { name: "_capabilities", type: "string" }],
-    name: "registerAgent",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "nonpayable",
-    type: "function"
-  },
+  // ── Agent Registry (Staking & Info) ──
   {
     inputs: [{ name: "_agentId", type: "uint256" }, { name: "_amount", type: "uint256" }],
     name: "stakeCollateral",
@@ -224,30 +217,12 @@ export const jobChainAbi = [
   },
   {
     inputs: [],
-    name: "nextAgentId",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
     name: "protocolFees",
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function"
   },
   // ── Events ──
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "agentId", type: "uint256" },
-      { indexed: true, name: "owner", type: "address" },
-      { indexed: false, name: "name", type: "string" },
-      { indexed: false, name: "capabilities", type: "string" },
-    ],
-    name: "AgentRegistered",
-    type: "event"
-  },
   {
     anonymous: false,
     inputs: [
