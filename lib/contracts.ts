@@ -353,3 +353,26 @@ export const messageTransmitterAbi = [
   }
 ] as const;
 
+// ═══════════════════════════════════════════════════════════════
+// Circle Gateway Nanopayments Config
+// ═══════════════════════════════════════════════════════════════
+export const GATEWAY_VAULT_ADDRESS = "0x80041234567890abcdef1234567890abcdef1234" as `0x${string}`;
+
+export const gatewayVaultAbi = [
+  {
+    inputs: [{ name: "amount", type: "uint256" }],
+    name: "deposit",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "amount", type: "uint256" }],
+    name: "withdraw",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+] as const;
+
+
