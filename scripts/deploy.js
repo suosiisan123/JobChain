@@ -40,6 +40,14 @@ async function main() {
   const verifierAddress = await zkVerifier.getAddress();
   console.log(`ZKVerifier deployed to: ${verifierAddress}`);
 
+  // Predict RevenueDistributor address using createAddress to solve circular dependencies
+  const currentNonce = await wallet.getNonce();
+  const predictedDistributorAddress = ethers.getCreateAddress({
+    from: wallet.address,
+    nonce: currentNonce + 4 // pool (0), verifier (1), jobChain (2), jobToken (3), distributor (4)
+  });
+  console.log("Predicted RevenueDistributor Address:", predictedDistributorAddress);
+
   // Deploy JobChainV2
   console.log("Deploying JobChainV2...");
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, wallet);
@@ -50,16 +58,52 @@ async function main() {
     REPUTATION_REGISTRY,
     ethers.ZeroAddress, // StableFX (Zero address to fallback)
     poolAddress,
-    verifierAddress
+    verifierAddress,
+    predictedDistributorAddress
   );
   await contract.waitForDeployment();
-
   const address = await contract.getAddress();
+
+  // Deploy JOBToken
+  console.log("Deploying JOBToken...");
+  const tokenArtifactPath = path.join(__dirname, "../artifacts/contracts/JOBToken.sol/JOBToken.json");
+  const tokenArtifact = JSON.parse(fs.readFileSync(tokenArtifactPath, "utf8"));
+  const tokenFactory = new ethers.ContractFactory(tokenArtifact.abi, tokenArtifact.bytecode, wallet);
+  const jobToken = await tokenFactory.deploy();
+  await jobToken.waitForDeployment();
+  const tokenAddress = await jobToken.getAddress();
+  console.log(`JOBToken deployed to: ${tokenAddress}`);
+
+  // Deploy RevenueDistributor
+  console.log("Deploying RevenueDistributor...");
+  const distArtifactPath = path.join(__dirname, "../artifacts/contracts/RevenueDistributor.sol/RevenueDistributor.json");
+  const distArtifact = JSON.parse(fs.readFileSync(distArtifactPath, "utf8"));
+  const distFactory = new ethers.ContractFactory(distArtifact.abi, distArtifact.bytecode, wallet);
+  const revenueDistributor = await distFactory.deploy(
+    tokenAddress,
+    USDC_ARC,
+    "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", // EURC
+    address
+  );
+  await revenueDistributor.waitForDeployment();
+  const distributorAddress = await revenueDistributor.getAddress();
+  console.log(`RevenueDistributor deployed to: ${distributorAddress}`);
+
+  // Linkage validation / update
+  if (predictedDistributorAddress.toLowerCase() !== distributorAddress.toLowerCase()) {
+    console.log("Predicted address differed. Updating on-chain linkages...");
+    const tx = await contract.setRevenueDistributor(distributorAddress);
+    await tx.wait();
+    console.log("Linkage updated successfully.");
+  }
+
   console.log("");
   console.log("╔════════════════════════════════════════════════╗");
-  console.log("║  JobChainV2 deployed successfully!             ║");
+  console.log("║  JobChainV2 & DAO deployed successfully!       ║");
   console.log("╠════════════════════════════════════════════════╣");
   console.log(`║  Address: ${address}  `);
+  console.log(`║  JOBToken: ${tokenAddress}  `);
+  console.log(`║  RevenueDistributor: ${distributorAddress}  `);
   console.log(`║  ZKVerifier: ${verifierAddress}  `);
   console.log(`║  USDC:    ${USDC_ARC}  `);
   console.log(`║  IdentityRegistry: ${IDENTITY_REGISTRY}  `);

@@ -13,7 +13,11 @@ import { DashboardTab } from '@/components/DashboardTab'
 import { IdentityTab } from '@/components/IdentityTab'
 import { PasskeyAuth } from '@/components/PasskeyAuth'
 import { MicroStreamTab } from '@/components/MicroStreamTab'
+import { SchedulerTab } from '@/components/SchedulerTab'
+import { DocsTab } from '@/components/DocsTab'
+import { GovernanceTab } from '@/components/GovernanceTab'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
+import { Clock, BookOpen, Vote } from 'lucide-react'
 
 const TABS = [
   { id: 'terminal', label: '~/live-events', icon: Terminal },
@@ -23,6 +27,9 @@ const TABS = [
   { id: 'disputes', label: 'dispute-center', icon: Scale },
   { id: 'microtask', label: '~/micro-streams', icon: Zap },
   { id: 'passkey', label: 'passkey-account', icon: Fingerprint },
+  { id: 'scheduler', label: 'cron-scheduler', icon: Clock },
+  { id: 'governance', label: 'dao-governance', icon: Vote },
+  { id: 'docs', label: 'sdk-docs', icon: BookOpen },
   { id: 'dashboard', label: 'dashboard', icon: BarChart3 },
 ] as const
 
@@ -200,6 +207,9 @@ export default function JobChainApp() {
             {activeTab === 'disputes' && <DisputesTab />}
             {activeTab === 'microtask' && <MicroStreamTab />}
             {activeTab === 'passkey' && <PasskeyAuth />}
+            {activeTab === 'scheduler' && <SchedulerTab />}
+            {activeTab === 'governance' && <GovernanceTab />}
+            {activeTab === 'docs' && <DocsTab />}
             {activeTab === 'dashboard' && <DashboardTab />}
           </div>
         </div>
