@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, useReadContract, usePublicClient } from 'wagmi'
+import { useReadContract, usePublicClient } from 'wagmi'
 import { parseUnits, formatUnits } from 'viem'
 import { Briefcase, Play, CheckCircle, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
   JOBCHAIN_CONTRACT_ADDRESS,
   USDC_ADDRESS_ARC,
@@ -28,9 +29,8 @@ interface JobData {
 }
 
 export function JobsTab() {
-  const { isConnected } = useAccount()
+  const { isConnected, writeContractAsync } = useSmartWallet()
   const publicClient = usePublicClient()
-  const { writeContractAsync } = useWriteContract()
   const [jobs, setJobs] = useState<JobData[]>([])
   const [loading, setLoading] = useState(false)
   const [desc, setDesc] = useState('')

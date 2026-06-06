@@ -1,21 +1,24 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Terminal, Users, Briefcase, BarChart3, Fingerprint } from 'lucide-react'
+import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useAccount, useBalance } from 'wagmi'
+import { useBalance } from 'wagmi'
 import { Toaster } from 'react-hot-toast'
 import { TerminalTab } from '@/components/TerminalTab'
 import { AgentsTab } from '@/components/AgentsTab'
 import { JobsTab } from '@/components/JobsTab'
 import { DashboardTab } from '@/components/DashboardTab'
 import { IdentityTab } from '@/components/IdentityTab'
+import { PasskeyAuth } from '@/components/PasskeyAuth'
+import { useSmartWallet } from '@/hooks/useSmartWallet'
 
 const TABS = [
   { id: 'terminal', label: '~/live-events', icon: Terminal },
-  { id: 'identity', label: 'erc-8004', icon: Fingerprint },
+  { id: 'identity', label: 'erc-8004', icon: Shield },
   { id: 'agents', label: 'agent-registry', icon: Users },
   { id: 'jobs', label: 'job-queue', icon: Briefcase },
+  { id: 'passkey', label: 'passkey-account', icon: Fingerprint },
   { id: 'dashboard', label: 'dashboard', icon: BarChart3 },
 ] as const
 
@@ -23,8 +26,8 @@ type TabId = typeof TABS[number]['id']
 
 export default function JobChainApp() {
   const [activeTab, setActiveTab] = useState<TabId>('terminal')
-  const { address, isConnected } = useAccount()
-  const { data: balance } = useBalance({ address })
+  const { address, isConnected, isPasskey } = useSmartWallet()
+  const { data: balance } = useBalance({ address: address as `0x${string}` })
   const [circleStatus, setCircleStatus] = useState<'Active' | 'Simulated' | 'Checking'>('Checking')
 
   // Check Circle Integration Status
@@ -119,7 +122,7 @@ export default function JobChainApp() {
             {/* Dynamic Balance */}
             {isConnected && balance && (
               <>
-                <div className="sidebar-section-label" style={{ marginTop: 24 }}>BALANCE</div>
+                <div className="sidebar-section-label" style={{ marginTop: 24 }}>BALANCE ({isPasskey ? 'SCA' : 'EOA'})</div>
                 <div className="sidebar-item">
                   <span style={{ color: 'var(--warp-success)', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
                     {parseFloat(balance.formatted).toFixed(4)}
@@ -129,29 +132,57 @@ export default function JobChainApp() {
               </>
             )}
 
+            {/* Wallet Onboarding Status Panel */}
             <div style={{ marginTop: 'auto', padding: '16px' }}>
-              <div className="sidebar-section-label">WALLET</div>
-              <div className="wallet-container">
+              <div className="sidebar-section-label">ACTIVE SIGNERS</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                {/* SCA passkey wallet if active */}
+                {isPasskey && address && (
+                  <div
+                    className="sidebar-item active"
+                    onClick={() => setActiveTab('passkey')}
+                    style={{ cursor: 'pointer', background: 'rgba(122, 162, 247, 0.1)', borderColor: 'rgba(122, 162, 247, 0.3)' }}
+                  >
+                    <Fingerprint size={12} style={{ color: 'var(--warp-cyan)', marginRight: 6 }} />
+                    <span style={{ color: 'var(--warp-cyan)', fontSize: 11, fontFamily: 'monospace' }}>
+                      SCA: {address.slice(0, 6)}...{address.slice(-4)}
+                    </span>
+                  </div>
+                )}
+
+                {/* EOA wallet */}
                 <ConnectButton.Custom>
                   {({ account, openConnectModal, openAccountModal, mounted }) => {
                     if (!mounted) return null
                     if (!account) {
                       return (
-                        <button className="warp-btn" onClick={openConnectModal} style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
-                          Connect Wallet
+                        <button className="warp-btn" onClick={openConnectModal} style={{ width: '100%', justifyContent: 'center' }}>
+                          Connect EOA Wallet
                         </button>
                       )
                     }
                     return (
-                      <div className="sidebar-item" onClick={openAccountModal} style={{ cursor: 'pointer' }}>
+                      <div className={`sidebar-item ${!isPasskey ? 'active' : ''}`} onClick={openAccountModal} style={{ cursor: 'pointer' }}>
                         <span className="status-dot online" />
-                        <span style={{ color: 'var(--warp-success)', fontSize: 12 }}>
-                          {account.displayName}
+                        <span style={{ color: 'var(--warp-success)', fontSize: 11, fontFamily: 'monospace' }}>
+                          EOA: {account.displayName}
                         </span>
                       </div>
                     )
                   }}
                 </ConnectButton.Custom>
+
+                {/* Login with Passkey Button if SCA is not active */}
+                {!isPasskey && (
+                  <button
+                    className="warp-btn border"
+                    onClick={() => setActiveTab('passkey')}
+                    style={{ width: '100%', justifyContent: 'center' }}
+                  >
+                    <Fingerprint size={12} style={{ marginRight: 6 }} /> Login with Passkey
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -162,6 +193,7 @@ export default function JobChainApp() {
             {activeTab === 'identity' && <IdentityTab />}
             {activeTab === 'agents' && <AgentsTab />}
             {activeTab === 'jobs' && <JobsTab />}
+            {activeTab === 'passkey' && <PasskeyAuth />}
             {activeTab === 'dashboard' && <DashboardTab />}
           </div>
         </div>

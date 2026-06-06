@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, usePublicClient } from 'wagmi'
+import { usePublicClient } from 'wagmi'
 import { parseAbiItem, keccak256, toHex } from 'viem'
 import { Fingerprint, ShieldCheck, Award, ExternalLink, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
   IDENTITY_REGISTRY, REPUTATION_REGISTRY,
   identityRegistryAbi, reputationRegistryAbi,
@@ -17,9 +18,8 @@ interface RegisteredAgent {
 }
 
 export function IdentityTab() {
-  const { address, isConnected } = useAccount()
+  const { address, isConnected, writeContractAsync } = useSmartWallet()
   const publicClient = usePublicClient()
-  const { writeContractAsync } = useWriteContract()
   const [loading, setLoading] = useState(false)
   const [metadataURI, setMetadataURI] = useState('ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei')
   const [agentIdForReputation, setAgentIdForReputation] = useState('')

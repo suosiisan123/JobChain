@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract, usePublicClient } from 'wagmi'
+import { usePublicClient } from 'wagmi'
 import { parseUnits, formatUnits, parseAbiItem } from 'viem'
 import { UserPlus, Shield, Trophy, Star, Wallet, HelpCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
   JOBCHAIN_CONTRACT_ADDRESS,
   USDC_ADDRESS_ARC,
@@ -31,7 +32,7 @@ interface AgentData {
 }
 
 export function AgentsTab() {
-  const { isConnected } = useAccount()
+  const { isConnected, writeContractAsync } = useSmartWallet()
   const publicClient = usePublicClient()
   const [name, setName] = useState('')
   const [capabilities, setCapabilities] = useState('')
@@ -39,8 +40,6 @@ export function AgentsTab() {
   const [stakeAmount, setStakeAmount] = useState('')
   const [agents, setAgents] = useState<AgentData[]>([])
   const [loading, setLoading] = useState(false)
-
-  const { writeContractAsync } = useWriteContract()
 
   // Fetch agents and sync balances
   async function fetchAgents() {
