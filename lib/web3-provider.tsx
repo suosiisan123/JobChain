@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
-import { WagmiProvider } from 'wagmi'
+import { WagmiProvider, useAccount, useWriteContract } from 'wagmi'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { arcTestnet } from './arc-config'
 

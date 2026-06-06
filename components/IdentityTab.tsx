@@ -70,7 +70,7 @@ export function IdentityTab() {
               address: IDENTITY_REGISTRY,
               abi: identityRegistryAbi,
               functionName: 'balanceOf',
-              args: [address],
+              args: [address as `0x${string}`],
             }) as bigint
             setMyAgentCount(Number(balance))
           } catch { /* skip */ }
