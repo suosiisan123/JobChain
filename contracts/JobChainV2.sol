@@ -5,13 +5,6 @@ pragma solidity ^0.8.24;
  * @title JobChainV2
  * @notice Decentralized AI Agent Job Queue with ERC-8004 Identity + ERC-8183 Job Protocol
  * @dev Deployed on Arc Testnet — USDC is the native gas token
- *
- * Features:
- * - Agent registration with on-chain identity + capabilities
- * - USDC escrow for job payments
- * - Capability-based job matching
- * - Reputation scoring with staking + slashing
- * - FIFO priority job queue
  */
 
 interface IERC20 {
@@ -20,19 +13,37 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+interface IIdentityRegistry {
+    function ownerOf(uint256 tokenId) external view returns (address);
+    function balanceOf(address owner) external view returns (uint256);
+    function tokenURI(uint256 tokenId) external view returns (string memory);
+}
+
+interface IReputationRegistry {
+    function giveFeedback(
+        uint256 agentId,
+        int128 score,
+        uint8 category,
+        string calldata tag,
+        string calldata comment,
+        string calldata metadata,
+        string calldata attestation,
+        bytes32 referenceHash
+    ) external;
+}
+
 contract JobChainV2 {
     // ══════════════════════════════════════════════════════
     // State
     // ══════════════════════════════════════════════════════
 
     IERC20 public immutable usdc;
+    IIdentityRegistry public immutable identityRegistry;
+    IReputationRegistry public immutable reputationRegistry;
     address public owner;
 
-    // ── Agent Registry (ERC-8004 inspired) ──
+    // ── Agent Local State (Metrics & Collateral) ──
     struct Agent {
-        address owner;
-        string name;
-        string capabilities; // comma-separated tags e.g. "nlp,vision,data"
         uint256 stakedAmount;
         uint256 completedJobs;
         uint256 totalScore;
@@ -42,7 +53,6 @@ contract JobChainV2 {
     }
 
     mapping(uint256 => Agent) public agents;
-    uint256 public nextAgentId;
 
     // ── Job Queue (ERC-8183 inspired) ──
     enum JobStatus { Open, InProgress, Submitted, Completed, Failed, Cancelled }
@@ -73,7 +83,6 @@ contract JobChainV2 {
     // Events
     // ══════════════════════════════════════════════════════
 
-    event AgentRegistered(uint256 indexed agentId, address indexed owner, string name, string capabilities);
     event AgentStaked(uint256 indexed agentId, uint256 amount, uint256 totalStake);
     event AgentSlashed(uint256 indexed agentId, uint256 slashAmount, string reason);
     event AgentDeactivated(uint256 indexed agentId);
@@ -90,39 +99,28 @@ contract JobChainV2 {
     // Constructor
     // ══════════════════════════════════════════════════════
 
-    constructor(address _usdc) {
+    constructor(address _usdc, address _identityRegistry, address _reputationRegistry) {
         usdc = IERC20(_usdc);
+        identityRegistry = IIdentityRegistry(_identityRegistry);
+        reputationRegistry = IReputationRegistry(_reputationRegistry);
         owner = msg.sender;
     }
 
     // ══════════════════════════════════════════════════════
-    // Agent Registry (ERC-8004)
+    // Agent Collateral (Staking)
     // ══════════════════════════════════════════════════════
 
-    function registerAgent(string calldata _name, string calldata _capabilities) external returns (uint256) {
-        uint256 id = nextAgentId++;
-        agents[id] = Agent({
-            owner: msg.sender,
-            name: _name,
-            capabilities: _capabilities,
-            stakedAmount: 0,
-            completedJobs: 0,
-            totalScore: 0,
-            failedJobs: 0,
-            isActive: true,
-            registeredAt: block.timestamp
-        });
-
-        emit AgentRegistered(id, msg.sender, _name, _capabilities);
-        return id;
-    }
-
     function stakeCollateral(uint256 _agentId, uint256 _amount) external {
-        Agent storage a = agents[_agentId];
-        require(a.owner == msg.sender, "Not agent owner");
+        require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
         require(_amount > 0, "Amount must be > 0");
 
         require(usdc.transferFrom(msg.sender, address(this), _amount), "Stake transfer failed");
+        
+        Agent storage a = agents[_agentId];
+        if (a.registeredAt == 0) {
+            a.isActive = true;
+            a.registeredAt = block.timestamp;
+        }
         a.stakedAmount += _amount;
 
         emit AgentStaked(_agentId, _amount, a.stakedAmount);
@@ -130,7 +128,7 @@ contract JobChainV2 {
 
     function getAgentReputation(uint256 _agentId) external view returns (uint256 score, uint256 completed, uint256 failed) {
         Agent storage a = agents[_agentId];
-        score = a.completedJobs > 0 ? (a.totalScore * 100) / a.completedJobs : 0; // score in basis points (e.g. 450 = 4.50)
+        score = a.completedJobs > 0 ? (a.totalScore * 100) / a.completedJobs : 0;
         completed = a.completedJobs;
         failed = a.failedJobs;
     }
@@ -173,7 +171,7 @@ contract JobChainV2 {
         Agent storage a = agents[_agentId];
 
         require(j.status == JobStatus.Open, "Job not open");
-        require(a.owner == msg.sender, "Not agent owner");
+        require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
         require(a.isActive, "Agent not active");
         require(a.stakedAmount >= MIN_STAKE, "Insufficient stake");
         require(block.timestamp < j.deadline, "Job expired");
@@ -186,10 +184,8 @@ contract JobChainV2 {
 
     function submitResult(uint256 _jobId, string calldata _resultHash) external {
         Job storage j = jobs[_jobId];
-        Agent storage a = agents[j.assignedAgent];
-
         require(j.status == JobStatus.InProgress, "Job not in progress");
-        require(a.owner == msg.sender, "Not assigned agent");
+        require(identityRegistry.ownerOf(j.assignedAgent) == msg.sender, "Not assigned agent");
 
         j.status = JobStatus.Submitted;
         j.resultHash = _resultHash;
@@ -218,8 +214,25 @@ contract JobChainV2 {
         a.completedJobs++;
         a.totalScore += _rating;
 
+        // Fetch agent owner from IdentityRegistry
+        address agentOwner = identityRegistry.ownerOf(j.assignedAgent);
+
         // Pay agent
-        require(usdc.transfer(a.owner, payout), "Payment failed");
+        require(usdc.transfer(agentOwner, payout), "Payment failed");
+
+        // Submit feedback to official ReputationRegistry (using defensive try-catch)
+        bytes32 refHash = keccak256(abi.encodePacked("successful_job", _jobId));
+        int128 score = int128(int256((uint256(_rating) - 1) * 25)); // 1-5 mapped to 0-100
+        try reputationRegistry.giveFeedback(
+            j.assignedAgent,
+            score,
+            0, // category
+            "successful_job",
+            "Job completed successfully",
+            "",
+            "",
+            refHash
+        ) {} catch {}
 
         emit JobApproved(_jobId, _rating);
         emit PaymentReleased(_jobId, j.assignedAgent, payout);
@@ -251,6 +264,20 @@ contract JobChainV2 {
         // Return escrow to poster
         j.status = JobStatus.Failed;
         require(usdc.transfer(j.poster, j.reward), "Refund failed");
+
+        // Submit feedback to official ReputationRegistry (defensive try-catch)
+        bytes32 refHash = keccak256(abi.encodePacked("failed_job", _jobId));
+        int128 score = -50; // negative score for failure
+        try reputationRegistry.giveFeedback(
+            j.assignedAgent,
+            score,
+            0,
+            "failed_job",
+            _reason,
+            "",
+            "",
+            refHash
+        ) {} catch {}
 
         emit JobFailed(_jobId, j.assignedAgent, _reason);
     }
@@ -286,7 +313,11 @@ contract JobChainV2 {
         uint256 failedJobs, bool isActive, uint256 registeredAt
     ) {
         Agent storage a = agents[_agentId];
-        return (a.owner, a.name, a.capabilities, a.stakedAmount, a.completedJobs,
+        address resolvedOwner = address(0);
+        try identityRegistry.ownerOf(_agentId) returns (address o) {
+            resolvedOwner = o;
+        } catch {}
+        return (resolvedOwner, "", "", a.stakedAmount, a.completedJobs,
                 a.totalScore, a.failedJobs, a.isActive, a.registeredAt);
     }
 
