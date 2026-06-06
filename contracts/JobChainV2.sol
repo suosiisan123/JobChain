@@ -43,6 +43,26 @@ interface IStableFX {
     ) external returns (uint256 amountOut);
 }
 
+interface IMockYieldPool {
+    function deposit(address token, uint256 amount) external returns (bool);
+    function withdraw(address token, uint256 amount, address receiver) external returns (bool);
+    function getExchangeRate(address token) external view returns (uint256);
+}
+
+interface IZKVerifier {
+    function verifyCapability(
+        uint256 agentId,
+        string calldata capabilities,
+        bytes calldata signature
+    ) external view returns (bool);
+
+    function verifyExecution(
+        uint256 jobId,
+        string calldata resultHash,
+        bytes calldata proof
+    ) external view returns (bool);
+}
+
 contract JobChainV2 {
     // ══════════════════════════════════════════════════════
     // State
@@ -54,6 +74,10 @@ contract JobChainV2 {
     IReputationRegistry public immutable reputationRegistry;
     address public owner;
     address public stableFX;
+    address public yieldPool;
+    address public verifier;
+    uint256 public cumulativeYield; // Total accumulated yield in USDC equivalent (6 decimals)
+    uint256 public yieldTVL; // Current TVL in USDC equivalent (6 decimals)
 
     // ── Agent Local State (Metrics & Collateral) ──
     struct Agent {
@@ -84,6 +108,10 @@ contract JobChainV2 {
         uint256 createdAt;
         address paymentToken; // USDC or EURC
         uint256 failedAt; // Timestamp when marked failed
+        uint256 exchangeRateAtDeposit;
+        uint256 agentExchangeRateAtPickup;
+        bool depositedInPool;
+        bool stakeDepositedInPool;
     }
 
     mapping(uint256 => Job) public jobs;
@@ -129,6 +157,8 @@ contract JobChainV2 {
     event DisputeOpened(uint256 indexed jobId, uint256 indexed agentId, address indexed opener);
     event DisputeVoteCast(uint256 indexed jobId, uint256 indexed agentId, address indexed voter, bool supportAgent, uint256 weight);
     event DisputeResolved(uint256 indexed jobId, bool resolvedInFavorOfAgent, uint256 approveWeight, uint256 rejectWeight);
+    event YieldDistributed(uint256 indexed jobId, uint256 agentShare, uint256 posterShare, uint256 protocolShare);
+    event YieldPoolAlert(string message);
 
     // ══════════════════════════════════════════════════════
     // Constructor
@@ -139,20 +169,54 @@ contract JobChainV2 {
         address _eurc,
         address _identityRegistry,
         address _reputationRegistry,
-        address _stableFX
+        address _stableFX,
+        address _yieldPool,
+        address _verifier
     ) {
         usdc = IERC20(_usdc);
         eurc = IERC20(_eurc);
         identityRegistry = IIdentityRegistry(_identityRegistry);
         reputationRegistry = IReputationRegistry(_reputationRegistry);
         stableFX = _stableFX;
+        yieldPool = _yieldPool;
+        verifier = _verifier;
         owner = msg.sender;
+    }
+
+    // ── Setter for Verifier address ──
+    function setVerifier(address _verifier) external {
+        require(msg.sender == owner, "Only owner");
+        verifier = _verifier;
     }
 
     // ── Setter for StableFX address ──
     function setStableFX(address _stableFX) external {
         require(msg.sender == owner, "Only owner");
         stableFX = _stableFX;
+    }
+
+    // ── Setter for YieldPool address ──
+    function setYieldPool(address _yieldPool) external {
+        require(msg.sender == owner, "Only owner");
+        yieldPool = _yieldPool;
+    }
+
+    // ── Helper conversion to USDC ──
+    function _convertToUSDC(uint256 amount) internal pure returns (uint256) {
+        return (amount * 108) / 100;
+    }
+
+    // ── Helper withdrawal from YieldPool ──
+    function _withdrawFromPool(address token, uint256 amount) internal returns (bool) {
+        if (yieldPool == address(0)) {
+            return false;
+        }
+        try IMockYieldPool(yieldPool).withdraw(token, amount, address(this)) returns (bool success) {
+            return success;
+        } catch {
+            emit YieldPoolAlert("Withdrawal failed from yield pool, using contract cash");
+            return false;
+        }
     }
 
     // ══════════════════════════════════════════════════════
@@ -171,6 +235,16 @@ contract JobChainV2 {
             a.registeredAt = block.timestamp;
         }
         a.stakedAmount += _amount;
+
+        // Try depositing to YieldPool
+        if (yieldPool != address(0)) {
+            usdc.approve(yieldPool, _amount);
+            try IMockYieldPool(yieldPool).deposit(address(usdc), _amount) returns (bool success) {
+                if (success) {
+                    yieldTVL += _amount;
+                }
+            } catch {}
+        }
 
         emit AgentStaked(_agentId, _amount, a.stakedAmount);
     }
@@ -206,6 +280,22 @@ contract JobChainV2 {
 
         require(IERC20(_paymentToken).transferFrom(msg.sender, address(this), _reward), "Escrow lock failed");
 
+        uint256 rate = 0;
+        bool deposited = false;
+
+        // Try depositing to YieldPool
+        if (yieldPool != address(0)) {
+            IERC20(_paymentToken).approve(yieldPool, _reward);
+            try IMockYieldPool(yieldPool).deposit(_paymentToken, _reward) returns (bool success) {
+                if (success) {
+                    rate = IMockYieldPool(yieldPool).getExchangeRate(_paymentToken);
+                    deposited = true;
+                    uint256 usdcEquivalent = _paymentToken == address(usdc) ? _reward : _convertToUSDC(_reward);
+                    yieldTVL += usdcEquivalent;
+                }
+            } catch {}
+        }
+
         uint256 id = nextJobId++;
         jobs[id] = Job({
             poster: msg.sender,
@@ -219,14 +309,18 @@ contract JobChainV2 {
             rating: 0,
             createdAt: block.timestamp,
             paymentToken: _paymentToken,
-            failedAt: 0
+            failedAt: 0,
+            exchangeRateAtDeposit: rate,
+            agentExchangeRateAtPickup: 0,
+            depositedInPool: deposited,
+            stakeDepositedInPool: false
         });
 
         emit JobPosted(id, msg.sender, _reward, _requiredCapabilities, _deadline);
         return id;
     }
 
-    function pickupJob(uint256 _jobId, uint256 _agentId) external {
+    function pickupJob(uint256 _jobId, uint256 _agentId, bytes calldata _capabilityProof) external {
         Job storage j = jobs[_jobId];
         Agent storage a = agents[_agentId];
 
@@ -236,21 +330,47 @@ contract JobChainV2 {
         require(a.stakedAmount >= MIN_STAKE, "Insufficient stake");
         require(block.timestamp < j.deadline, "Job expired");
 
+        // Verify capability attestation if verifier is set and job has required capabilities
+        if (verifier != address(0) && bytes(j.requiredCapabilities).length > 0) {
+            require(
+                IZKVerifier(verifier).verifyCapability(_agentId, j.requiredCapabilities, _capabilityProof),
+                "Invalid capability attestation signature"
+            );
+        }
+
         j.status = JobStatus.InProgress;
         j.assignedAgent = _agentId;
+
+        // Record agent exchange rate at pickup time
+        if (yieldPool != address(0)) {
+            j.agentExchangeRateAtPickup = IMockYieldPool(yieldPool).getExchangeRate(address(usdc));
+            j.stakeDepositedInPool = true;
+        }
 
         emit JobPickedUp(_jobId, _agentId);
     }
 
-    function submitResult(uint256 _jobId, string calldata _resultHash) external {
+    function submitResult(uint256 _jobId, string calldata _resultHash, bytes calldata _proof) public {
         Job storage j = jobs[_jobId];
         require(j.status == JobStatus.InProgress, "Job not in progress");
         require(identityRegistry.ownerOf(j.assignedAgent) == msg.sender, "Not assigned agent");
+
+        // Verify cryptographic execution proof if verifier is set
+        if (verifier != address(0)) {
+            require(
+                IZKVerifier(verifier).verifyExecution(_jobId, _resultHash, _proof),
+                "Invalid ZK/Execution proof"
+            );
+        }
 
         j.status = JobStatus.Submitted;
         j.resultHash = _resultHash;
 
         emit ResultSubmitted(_jobId, j.assignedAgent, _resultHash);
+    }
+
+    function submitResultWithProof(uint256 _jobId, string calldata _resultHash, bytes calldata _proof) external {
+        submitResult(_jobId, _resultHash, _proof);
     }
 
     function approveAndRelease(uint256 _jobId, uint8 _rating) external {
@@ -261,12 +381,75 @@ contract JobChainV2 {
 
         Agent storage a = agents[j.assignedAgent];
 
+        uint256 rewardYield = 0;
+        uint256 stakeYield = 0;
+
+        if (yieldPool != address(0)) {
+            uint256 currentRate = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+            if (j.depositedInPool && j.exchangeRateAtDeposit > 0 && currentRate > j.exchangeRateAtDeposit) {
+                rewardYield = (j.reward * (currentRate - j.exchangeRateAtDeposit)) / j.exchangeRateAtDeposit;
+            }
+            if (j.stakeDepositedInPool && j.agentExchangeRateAtPickup > 0) {
+                uint256 currentUsdcRate = IMockYieldPool(yieldPool).getExchangeRate(address(usdc));
+                if (currentUsdcRate > j.agentExchangeRateAtPickup) {
+                    stakeYield = (MIN_STAKE * (currentUsdcRate - j.agentExchangeRateAtPickup)) / j.agentExchangeRateAtPickup;
+                }
+            }
+        }
+
+        // Split rewardYield: 50% Agent, 30% Poster, 20% Protocol
+        uint256 agentRewardShare = (rewardYield * 50) / 100;
+        uint256 posterRewardShare = (rewardYield * 30) / 100;
+        uint256 protocolRewardShare = rewardYield - agentRewardShare - posterRewardShare;
+
+        // Split stakeYield: 50% Agent, 30% Poster, 20% Protocol
+        uint256 agentStakeShare = (stakeYield * 50) / 100;
+        uint256 posterStakeShare = (stakeYield * 30) / 100;
+        uint256 protocolStakeShare = stakeYield - agentStakeShare - posterStakeShare;
+
+        // Withdraw reward + rewardYield from pool
+        if (j.depositedInPool) {
+            uint256 withdrawAmount = j.reward + rewardYield;
+            bool withdrawn = _withdrawFromPool(j.paymentToken, withdrawAmount);
+            if (withdrawn) {
+                uint256 usdcEquivalent = j.paymentToken == address(usdc) ? withdrawAmount : _convertToUSDC(withdrawAmount);
+                if (yieldTVL >= usdcEquivalent) {
+                    yieldTVL -= usdcEquivalent;
+                } else {
+                    yieldTVL = 0;
+                }
+                cumulativeYield += j.paymentToken == address(usdc) ? rewardYield : _convertToUSDC(rewardYield);
+            }
+        }
+
+        // Withdraw stakeYield from pool
+        if (j.stakeDepositedInPool && stakeYield > 0) {
+            bool withdrawn = _withdrawFromPool(address(usdc), stakeYield);
+            if (withdrawn) {
+                cumulativeYield += stakeYield;
+            }
+        }
+
         // 1. Calculate fee in the source token
         uint256 fee = (j.reward * PROTOCOL_FEE_BPS) / 10000;
-        uint256 payoutInSource = j.reward - fee;
-        protocolTokenFees[j.paymentToken] += fee;
+        uint256 payoutInSource = j.reward - fee + agentRewardShare;
+        protocolTokenFees[j.paymentToken] += (fee + protocolRewardShare);
         if (j.paymentToken == address(usdc)) {
-            protocolFees += fee;
+            protocolFees += (fee + protocolRewardShare);
+        }
+
+        // Add protocol stake yield share
+        protocolTokenFees[address(usdc)] += protocolStakeShare;
+        if (address(usdc) == address(usdc)) {
+            protocolFees += protocolStakeShare;
+        }
+
+        // Refund poster's share of yield
+        if (posterRewardShare > 0) {
+            require(IERC20(j.paymentToken).transfer(j.poster, posterRewardShare), "Poster reward interest failed");
+        }
+        if (posterStakeShare > 0) {
+            require(usdc.transfer(j.poster, posterStakeShare), "Poster stake interest failed");
         }
 
         // Update job
@@ -297,6 +480,10 @@ contract JobChainV2 {
         // Pay agent in preferred token
         require(IERC20(preferredToken).transfer(agentOwner, finalPayoutAmount), "Payment failed");
 
+        if (agentStakeShare > 0) {
+            require(usdc.transfer(agentOwner, agentStakeShare), "Agent stake interest failed");
+        }
+
         // Submit feedback to official ReputationRegistry (using defensive try-catch)
         bytes32 refHash = keccak256(abi.encodePacked("successful_job", _jobId));
         int128 score = int128(int256((uint256(_rating) - 1) * 25)); // 1-5 mapped to 0-100
@@ -313,6 +500,7 @@ contract JobChainV2 {
 
         emit JobApproved(_jobId, _rating);
         emit PaymentReleased(_jobId, j.assignedAgent, finalPayoutAmount);
+        emit YieldDistributed(_jobId, agentRewardShare + agentStakeShare, posterRewardShare + posterStakeShare, protocolRewardShare + protocolStakeShare);
     }
 
     function failJob(uint256 _jobId, string calldata _reason) external {
@@ -334,6 +522,38 @@ contract JobChainV2 {
 
         Agent storage a = agents[j.assignedAgent];
 
+        uint256 rewardYield = 0;
+        if (yieldPool != address(0) && j.depositedInPool && j.exchangeRateAtDeposit > 0) {
+            uint256 currentRate = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+            if (currentRate > j.exchangeRateAtDeposit) {
+                rewardYield = (j.reward * (currentRate - j.exchangeRateAtDeposit)) / j.exchangeRateAtDeposit;
+            }
+        }
+
+        // Withdraw reward + rewardYield from pool
+        if (j.depositedInPool) {
+            uint256 withdrawAmount = j.reward + rewardYield;
+            bool withdrawn = _withdrawFromPool(j.paymentToken, withdrawAmount);
+            if (withdrawn) {
+                uint256 usdcEquivalent = j.paymentToken == address(usdc) ? withdrawAmount : _convertToUSDC(withdrawAmount);
+                if (yieldTVL >= usdcEquivalent) {
+                    yieldTVL -= usdcEquivalent;
+                } else {
+                    yieldTVL = 0;
+                }
+                cumulativeYield += j.paymentToken == address(usdc) ? rewardYield : _convertToUSDC(rewardYield);
+            }
+        }
+
+        // Poster gets principal + 80% of yield, 20% to protocol
+        uint256 posterShare = (rewardYield * 80) / 100;
+        uint256 protocolShare = rewardYield - posterShare;
+
+        protocolTokenFees[j.paymentToken] += protocolShare;
+        if (j.paymentToken == address(usdc)) {
+            protocolFees += protocolShare;
+        }
+
         // Slash agent stake
         uint256 slashAmount = (a.stakedAmount * SLASH_PERCENTAGE) / 100;
         if (slashAmount > 0) {
@@ -352,7 +572,7 @@ contract JobChainV2 {
         a.failedJobs++;
 
         // Refund poster
-        require(IERC20(j.paymentToken).transfer(j.poster, j.reward), "Refund failed");
+        require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
 
         // Submit feedback to official ReputationRegistry (defensive try-catch)
         bytes32 refHash = keccak256(abi.encodePacked("failed_job_finalized", _jobId));
@@ -369,6 +589,7 @@ contract JobChainV2 {
         ) {} catch {}
 
         emit JobFailedFinalized(_jobId, j.assignedAgent);
+        emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
     }
 
     function openDispute(uint256 _jobId) external {
@@ -433,6 +654,45 @@ contract JobChainV2 {
 
         d.resolved = true;
 
+        uint256 rewardYield = 0;
+        uint256 stakeYield = 0;
+
+        if (yieldPool != address(0)) {
+            uint256 currentRate = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+            if (j.depositedInPool && j.exchangeRateAtDeposit > 0 && currentRate > j.exchangeRateAtDeposit) {
+                rewardYield = (j.reward * (currentRate - j.exchangeRateAtDeposit)) / j.exchangeRateAtDeposit;
+            }
+            if (j.stakeDepositedInPool && j.agentExchangeRateAtPickup > 0) {
+                uint256 currentUsdcRate = IMockYieldPool(yieldPool).getExchangeRate(address(usdc));
+                if (currentUsdcRate > j.agentExchangeRateAtPickup) {
+                    stakeYield = (MIN_STAKE * (currentUsdcRate - j.agentExchangeRateAtPickup)) / j.agentExchangeRateAtPickup;
+                }
+            }
+        }
+
+        // Withdraw reward + rewardYield from pool
+        if (j.depositedInPool) {
+            uint256 withdrawAmount = j.reward + rewardYield;
+            bool withdrawn = _withdrawFromPool(j.paymentToken, withdrawAmount);
+            if (withdrawn) {
+                uint256 usdcEquivalent = j.paymentToken == address(usdc) ? withdrawAmount : _convertToUSDC(withdrawAmount);
+                if (yieldTVL >= usdcEquivalent) {
+                    yieldTVL -= usdcEquivalent;
+                } else {
+                    yieldTVL = 0;
+                }
+                cumulativeYield += j.paymentToken == address(usdc) ? rewardYield : _convertToUSDC(rewardYield);
+            }
+        }
+
+        // Withdraw stakeYield from pool
+        if (j.stakeDepositedInPool && stakeYield > 0) {
+            bool withdrawn = _withdrawFromPool(address(usdc), stakeYield);
+            if (withdrawn) {
+                cumulativeYield += stakeYield;
+            }
+        }
+
         uint256 validatorFee = j.reward / 100; // 1% validator fee
         uint256 rewardAfterVoterFee = j.reward - validatorFee;
 
@@ -458,12 +718,34 @@ contract JobChainV2 {
             a.completedJobs++;
             a.totalScore += 5; // Default 5 rating for successful dispute defense
 
+            // Split rewardYield: 50% Agent, 30% Poster, 20% Protocol
+            uint256 agentRewardShare = (rewardYield * 50) / 100;
+            uint256 posterRewardShare = (rewardYield * 30) / 100;
+            uint256 protocolRewardShare = rewardYield - agentRewardShare - posterRewardShare;
+
+            // Split stakeYield: 50% Agent, 30% Poster, 20% Protocol
+            uint256 agentStakeShare = (stakeYield * 50) / 100;
+            uint256 posterStakeShare = (stakeYield * 30) / 100;
+            uint256 protocolStakeShare = stakeYield - agentStakeShare - posterStakeShare;
+
             // Calculate protocol fee from the remaining reward
             uint256 protocolFee = (rewardAfterVoterFee * PROTOCOL_FEE_BPS) / 10000;
-            uint256 finalPayout = rewardAfterVoterFee - protocolFee;
-            protocolTokenFees[j.paymentToken] += protocolFee;
+            uint256 finalPayout = rewardAfterVoterFee - protocolFee + agentRewardShare;
+            protocolTokenFees[j.paymentToken] += (protocolFee + protocolRewardShare);
             if (j.paymentToken == address(usdc)) {
-                protocolFees += protocolFee;
+                protocolFees += (protocolFee + protocolRewardShare);
+            }
+
+            protocolTokenFees[address(usdc)] += protocolStakeShare;
+            if (address(usdc) == address(usdc)) {
+                protocolFees += protocolStakeShare;
+            }
+
+            if (posterRewardShare > 0) {
+                require(IERC20(j.paymentToken).transfer(j.poster, posterRewardShare), "Poster interest refund failed");
+            }
+            if (posterStakeShare > 0) {
+                require(usdc.transfer(j.poster, posterStakeShare), "Poster stake interest failed");
             }
 
             address agentOwner = identityRegistry.ownerOf(j.assignedAgent);
@@ -480,6 +762,10 @@ contract JobChainV2 {
 
             require(IERC20(preferredToken).transfer(agentOwner, finalPayoutAmount), "Payout failed");
 
+            if (agentStakeShare > 0) {
+                require(usdc.transfer(agentOwner, agentStakeShare), "Agent stake interest failed");
+            }
+
             // Feedback (reputation increase)
             bytes32 refHash = keccak256(abi.encodePacked("dispute_won", _jobId));
             try reputationRegistry.giveFeedback(
@@ -495,10 +781,20 @@ contract JobChainV2 {
 
             emit DisputeResolved(_jobId, true, d.approveWeight, d.rejectWeight);
             emit PaymentReleased(_jobId, j.assignedAgent, finalPayoutAmount);
+            emit YieldDistributed(_jobId, agentRewardShare + agentStakeShare, posterRewardShare + posterStakeShare, protocolRewardShare + protocolStakeShare);
 
         } else {
             // Poster wins (or tie)
             j.status = JobStatus.Failed;
+
+            // Split rewardYield: 80% Poster, 20% Protocol, 0% Agent
+            uint256 posterShare = (rewardYield * 80) / 100;
+            uint256 protocolShare = rewardYield - posterShare;
+
+            protocolTokenFees[j.paymentToken] += protocolShare;
+            if (j.paymentToken == address(usdc)) {
+                protocolFees += protocolShare;
+            }
 
             Agent storage a = agents[j.assignedAgent];
             uint256 slashAmount = (a.stakedAmount * SLASH_PERCENTAGE) / 100;
@@ -516,8 +812,8 @@ contract JobChainV2 {
 
             a.failedJobs++;
 
-            // Refund poster remaining reward
-            require(IERC20(j.paymentToken).transfer(j.poster, rewardAfterVoterFee), "Refund failed");
+            // Refund poster remaining reward + poster's share of yield
+            require(IERC20(j.paymentToken).transfer(j.poster, rewardAfterVoterFee + posterShare), "Refund failed");
 
             // Feedback (reputation slash)
             bytes32 refHash = keccak256(abi.encodePacked("dispute_lost", _jobId));
@@ -533,6 +829,7 @@ contract JobChainV2 {
             ) {} catch {}
 
             emit DisputeResolved(_jobId, false, d.approveWeight, d.rejectWeight);
+            emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
         }
     }
 
@@ -562,9 +859,43 @@ contract JobChainV2 {
         require(j.status == JobStatus.Open, "Can only cancel open jobs");
 
         j.status = JobStatus.Cancelled;
-        require(IERC20(j.paymentToken).transfer(j.poster, j.reward), "Refund failed");
+
+        uint256 rewardYield = 0;
+        if (yieldPool != address(0) && j.depositedInPool && j.exchangeRateAtDeposit > 0) {
+            uint256 currentRate = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+            if (currentRate > j.exchangeRateAtDeposit) {
+                rewardYield = (j.reward * (currentRate - j.exchangeRateAtDeposit)) / j.exchangeRateAtDeposit;
+            }
+        }
+
+        // Withdraw reward + rewardYield from pool
+        if (j.depositedInPool) {
+            uint256 withdrawAmount = j.reward + rewardYield;
+            bool withdrawn = _withdrawFromPool(j.paymentToken, withdrawAmount);
+            if (withdrawn) {
+                uint256 usdcEquivalent = j.paymentToken == address(usdc) ? withdrawAmount : _convertToUSDC(withdrawAmount);
+                if (yieldTVL >= usdcEquivalent) {
+                    yieldTVL -= usdcEquivalent;
+                } else {
+                    yieldTVL = 0;
+                }
+                cumulativeYield += j.paymentToken == address(usdc) ? rewardYield : _convertToUSDC(rewardYield);
+            }
+        }
+
+        // Poster gets principal + 80% of yield, 20% to protocol
+        uint256 posterShare = (rewardYield * 80) / 100;
+        uint256 protocolShare = rewardYield - posterShare;
+
+        protocolTokenFees[j.paymentToken] += protocolShare;
+        if (j.paymentToken == address(usdc)) {
+            protocolFees += protocolShare;
+        }
+
+        require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
 
         emit JobCancelled(_jobId);
+        emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
     }
 
     // ══════════════════════════════════════════════════════
@@ -596,6 +927,32 @@ contract JobChainV2 {
                 a.totalScore, a.failedJobs, a.isActive, a.registeredAt);
     }
 
+    function getJobYield(uint256 _jobId) external view returns (
+        uint256 exchangeRateAtDeposit,
+        uint256 agentExchangeRateAtPickup,
+        bool depositedInPool,
+        bool stakeDepositedInPool,
+        uint256 rewardYield,
+        uint256 stakeYield
+    ) {
+        Job storage j = jobs[_jobId];
+        uint256 rYield = 0;
+        uint256 sYield = 0;
+        if (yieldPool != address(0)) {
+            uint256 currentRate = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+            if (j.depositedInPool && j.exchangeRateAtDeposit > 0 && currentRate > j.exchangeRateAtDeposit) {
+                rYield = (j.reward * (currentRate - j.exchangeRateAtDeposit)) / j.exchangeRateAtDeposit;
+            }
+            if (j.stakeDepositedInPool && j.agentExchangeRateAtPickup > 0) {
+                uint256 currentUsdcRate = IMockYieldPool(yieldPool).getExchangeRate(address(usdc));
+                if (currentUsdcRate > j.agentExchangeRateAtPickup) {
+                    sYield = (MIN_STAKE * (currentUsdcRate - j.agentExchangeRateAtPickup)) / j.agentExchangeRateAtPickup;
+                }
+            }
+        }
+        return (j.exchangeRateAtDeposit, j.agentExchangeRateAtPickup, j.depositedInPool, j.stakeDepositedInPool, rYield, sYield);
+    }
+
     // ── Internal StableFX swap routing helper ──
     function _swapTokens(
         address tokenIn,
@@ -621,6 +978,9 @@ contract JobChainV2 {
         uint256 amount = protocolFees;
         protocolFees = 0;
         protocolTokenFees[address(usdc)] = 0;
+        
+        _withdrawFromPool(address(usdc), amount);
+
         require(usdc.transfer(owner, amount), "Withdraw failed");
     }
 
@@ -631,6 +991,9 @@ contract JobChainV2 {
         if (_token == address(usdc)) {
             protocolFees = 0;
         }
+
+        _withdrawFromPool(_token, amount);
+
         require(IERC20(_token).transfer(owner, amount), "Withdraw failed");
     }
 }

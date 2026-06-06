@@ -4,6 +4,7 @@
 
 // TODO: Update after deploying with `npx hardhat run scripts/deploy.ts --network arcTestnet`
 export const JOBCHAIN_CONTRACT_ADDRESS = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" as `0x${string}`;
+export const ZK_VERIFIER_CONTRACT_ADDRESS = "0x98A1234567890abcdef1234567890abcdef12345" as `0x${string}`;
 
 export const USDC_ADDRESS_ARC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
 export const EURC_ADDRESS_ARC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" as `0x${string}`;
@@ -164,15 +165,34 @@ export const jobChainAbi = [
     type: "function"
   },
   {
-    inputs: [{ name: "_jobId", type: "uint256" }, { name: "_agentId", type: "uint256" }],
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_agentId", type: "uint256" },
+      { name: "_capabilityProof", type: "bytes" },
+    ],
     name: "pickupJob",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function"
   },
   {
-    inputs: [{ name: "_jobId", type: "uint256" }, { name: "_resultHash", type: "string" }],
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_resultHash", type: "string" },
+      { name: "_proof", type: "bytes" },
+    ],
     name: "submitResult",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_resultHash", type: "string" },
+      { name: "_proof", type: "bytes" },
+    ],
+    name: "submitResultWithProof",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function"
@@ -271,7 +291,20 @@ export const jobChainAbi = [
     stateMutability: "view",
     type: "function"
   },
-  // ── State Variables ──
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "getJobYield",
+    outputs: [
+      { name: "exchangeRateAtDeposit", type: "uint256" },
+      { name: "agentExchangeRateAtPickup", type: "uint256" },
+      { name: "depositedInPool", type: "bool" },
+      { name: "stakeDepositedInPool", type: "bool" },
+      { name: "rewardYield", type: "uint256" },
+      { name: "stakeYield", type: "uint256" },
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
   {
     inputs: [],
     name: "nextJobId",
@@ -283,6 +316,34 @@ export const jobChainAbi = [
     inputs: [],
     name: "protocolFees",
     outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "cumulativeYield",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "yieldTVL",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "yieldPool",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "verifier",
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
     type: "function"
   },

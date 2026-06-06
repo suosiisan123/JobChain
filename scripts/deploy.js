@@ -20,10 +20,38 @@ async function main() {
   const IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
   const REPUTATION_REGISTRY = "0x8004B663056A597Dffe9eCcC1965A193B7388713";
 
-  // Deploy
+  // Deploy MockYieldPool first
+  console.log("Deploying MockYieldPool...");
+  const poolArtifactPath = path.join(__dirname, "../artifacts/contracts/MockYieldPool.sol/MockYieldPool.json");
+  const poolArtifact = JSON.parse(fs.readFileSync(poolArtifactPath, "utf8"));
+  const poolFactory = new ethers.ContractFactory(poolArtifact.abi, poolArtifact.bytecode, wallet);
+  const mockPool = await poolFactory.deploy(USDC_ARC);
+  await mockPool.waitForDeployment();
+  const poolAddress = await mockPool.getAddress();
+  console.log(`MockYieldPool deployed to: ${poolAddress}`);
+
+  // Deploy ZKVerifier
+  console.log("Deploying ZKVerifier...");
+  const verifierArtifactPath = path.join(__dirname, "../artifacts/contracts/ZKVerifier.sol/ZKVerifier.json");
+  const verifierArtifact = JSON.parse(fs.readFileSync(verifierArtifactPath, "utf8"));
+  const verifierFactory = new ethers.ContractFactory(verifierArtifact.abi, verifierArtifact.bytecode, wallet);
+  const zkVerifier = await verifierFactory.deploy(wallet.address);
+  await zkVerifier.waitForDeployment();
+  const verifierAddress = await zkVerifier.getAddress();
+  console.log(`ZKVerifier deployed to: ${verifierAddress}`);
+
+  // Deploy JobChainV2
   console.log("Deploying JobChainV2...");
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, wallet);
-  const contract = await factory.deploy(USDC_ARC, IDENTITY_REGISTRY, REPUTATION_REGISTRY);
+  const contract = await factory.deploy(
+    USDC_ARC,
+    "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", // EURC
+    IDENTITY_REGISTRY,
+    REPUTATION_REGISTRY,
+    ethers.ZeroAddress, // StableFX (Zero address to fallback)
+    poolAddress,
+    verifierAddress
+  );
   await contract.waitForDeployment();
 
   const address = await contract.getAddress();
@@ -32,6 +60,7 @@ async function main() {
   console.log("║  JobChainV2 deployed successfully!             ║");
   console.log("╠════════════════════════════════════════════════╣");
   console.log(`║  Address: ${address}  `);
+  console.log(`║  ZKVerifier: ${verifierAddress}  `);
   console.log(`║  USDC:    ${USDC_ARC}  `);
   console.log(`║  IdentityRegistry: ${IDENTITY_REGISTRY}  `);
   console.log(`║  ReputationRegistry: ${REPUTATION_REGISTRY}  `);

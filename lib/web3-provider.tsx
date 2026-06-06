@@ -8,7 +8,7 @@ import { arcTestnet } from './arc-config'
 
 import '@rainbow-me/rainbowkit/styles.css'
 
-const config = getDefaultConfig({
+export const config = getDefaultConfig({
   appName: 'JobChain',
   projectId: 'jobchain-arc-testnet', // WalletConnect cloud project ID (public demo)
   chains: [arcTestnet],

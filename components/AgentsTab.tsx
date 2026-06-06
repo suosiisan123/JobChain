@@ -323,6 +323,7 @@ export function AgentsTab() {
                 <th>USDC Bal</th>
                 <th>Gas Bal</th>
                 <th>Score</th>
+                <th>Attest</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -376,6 +377,23 @@ export function AgentsTab() {
                         {getScore(a)}
                       </span>
                     ) : <span style={{ color: 'var(--warp-muted)' }}>—</span>}
+                  </td>
+                  <td>
+                    <span className="badge" style={{
+                      fontSize: 9,
+                      color: a.isActive ? 'var(--warp-cyan)' : 'var(--warp-muted)',
+                      border: `1px solid ${a.isActive ? 'rgba(122, 162, 247, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                      background: a.isActive ? 'rgba(122, 162, 247, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}>
+                      <Shield size={10} style={{ color: a.isActive ? 'var(--warp-cyan)' : 'var(--warp-muted)' }} />
+                      {a.isActive ? 'EAS-VERIFIED' : 'PENDING'}
+                    </span>
                   </td>
                   <td>
                     <span className={`status-badge ${a.isActive ? 'active' : 'inactive'}`}>

@@ -17,6 +17,7 @@ import {
 } from '@/lib/contracts'
 import { useCCTP, CCTP_CHAINS } from '@/hooks/useCCTP'
 import { BridgeStatusTracker } from '@/components/BridgeStatusTracker'
+import { VerificationHelper } from '@/components/VerificationHelper'
 
 const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled', 'Disputed'] as const
 const STATUS_COLORS: Record<string, string> = {
@@ -29,6 +30,12 @@ interface JobData {
   id: number; poster: string; description: string; requiredCapabilities: string
   reward: bigint; deadline: number; assignedAgent: number
   status: number; resultHash: string; rating: number; createdAt: number; paymentToken: string; failedAt: number
+  exchangeRateAtDeposit?: bigint;
+  agentExchangeRateAtPickup?: bigint;
+  depositedInPool?: boolean;
+  stakeDepositedInPool?: boolean;
+  rewardYield?: bigint;
+  stakeYield?: bigint;
 }
 
 export function JobsTab() {
@@ -94,8 +101,10 @@ export function JobsTab() {
 
   const [pickupJobId, setPickupJobId] = useState('')
   const [pickupAgentId, setPickupAgentId] = useState('')
+  const [pickupProof, setPickupProof] = useState('')
   const [submitJobId, setSubmitJobId] = useState('')
   const [resultHash, setResultHash] = useState('')
+  const [submitProof, setSubmitProof] = useState('')
   const [approveJobId, setApproveJobId] = useState('')
   const [rating, setRating] = useState('5')
   const [failJobId, setFailJobId] = useState('')
@@ -115,12 +124,31 @@ export function JobsTab() {
           address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
           functionName: 'getJob', args: [BigInt(i)],
         }) as unknown as any[]
+
+        let yieldInfo: any[] = [0n, 0n, false, false, 0n, 0n]
+        try {
+          yieldInfo = await publicClient.readContract({
+            address: JOBCHAIN_CONTRACT_ADDRESS,
+            abi: jobChainAbi,
+            functionName: 'getJobYield',
+            args: [BigInt(i)],
+          }) as unknown as any[]
+        } catch (err) {
+          console.warn('Failed to fetch job yield info:', err)
+        }
+
         list.push({
           id: i, poster: d[0], description: d[1], requiredCapabilities: d[2],
           reward: d[3], deadline: Number(d[4]), assignedAgent: Number(d[5]),
           status: Number(d[6]), resultHash: d[7], rating: Number(d[8]), createdAt: Number(d[9]),
           paymentToken: d[10] || USDC_ADDRESS_ARC,
-          failedAt: Number(d[11] || 0)
+          failedAt: Number(d[11] || 0),
+          exchangeRateAtDeposit: yieldInfo[0],
+          agentExchangeRateAtPickup: yieldInfo[1],
+          depositedInPool: yieldInfo[2],
+          stakeDepositedInPool: yieldInfo[3],
+          rewardYield: yieldInfo[4],
+          stakeYield: yieldInfo[5],
         })
       } catch { /* skip */ }
     }
@@ -203,7 +231,12 @@ export function JobsTab() {
       throw new Error('Agent ID is not registered on official ERC-8004 IdentityRegistry')
     }
 
-    return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'pickupJob', args: [BigInt(pickupJobId), BigInt(pickupAgentId)] })
+    return await writeContractAsync({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      functionName: 'pickupJob',
+      args: [BigInt(pickupJobId), BigInt(pickupAgentId), (pickupProof || '0x') as `0x${string}`]
+    })
   })
 
   const handleSetPreference = () => txToast('Updating agent payout preference...', async () => {
@@ -218,7 +251,12 @@ export function JobsTab() {
   })
 
   const handleSubmit = () => txToast('Submitting result...', async () => {
-    return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'submitResult', args: [BigInt(submitJobId), resultHash] })
+    return await writeContractAsync({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      functionName: 'submitResult',
+      args: [BigInt(submitJobId), resultHash, (submitProof || '0x') as `0x${string}`]
+    })
   })
 
   const handleApprove = () => txToast('Releasing payment...', async () => {
@@ -283,15 +321,47 @@ export function JobsTab() {
                   <td style={{ color: 'var(--warp-text)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.description}</td>
                   <td>{j.requiredCapabilities.split(',').map((c, i) => <span key={i} className="tag">{c.trim()}</span>)}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--warp-success)' }}>
-                    {formatUnits(j.reward, 6)} <span style={{ fontSize: 10, color: 'var(--warp-muted)' }}>
-                      {j.paymentToken?.toLowerCase() === EURC_ADDRESS_ARC.toLowerCase() ? 'EURC' : 'USDC'}
-                    </span>
+                    <div style={{ fontWeight: 600 }}>
+                      {formatUnits(j.reward, 6)} <span style={{ fontSize: 10, color: 'var(--warp-muted)' }}>
+                        {j.paymentToken?.toLowerCase() === EURC_ADDRESS_ARC.toLowerCase() ? 'EURC' : 'USDC'}
+                      </span>
+                    </div>
+                    {j.depositedInPool && (
+                      <div style={{ fontSize: 9, color: 'var(--warp-cyan)', display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                        <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: 'var(--warp-cyan)' }}></span>
+                        accruing yield (8.5% APY)
+                      </div>
+                    )}
+                    {j.rewardYield !== undefined && j.rewardYield > 0n && (
+                      <div style={{ fontSize: 9, color: 'var(--warp-success)', marginTop: 2, fontFamily: 'monospace' }}>
+                        + {formatUnits(j.rewardYield, 6)} yield accrued
+                      </div>
+                    )}
                   </td>
                   <td style={{ fontSize: 11 }}>
                     <Clock size={10} style={{ marginRight: 3, verticalAlign: 'middle' }} />
                     {timeLeft(j.deadline)}
                   </td>
-                  <td>{j.status > 0 ? <span style={{ color: 'var(--warp-magenta)' }}>#{j.assignedAgent}</span> : <span style={{ color: 'var(--warp-muted)' }}>—</span>}</td>
+                  <td>
+                    {j.status > 0 ? (
+                      <div>
+                        <span style={{ color: 'var(--warp-magenta)', fontWeight: 600 }}>#{j.assignedAgent}</span>
+                        {j.stakeDepositedInPool && (
+                          <div style={{ fontSize: 9, color: 'var(--warp-cyan)', display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                            <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: 'var(--warp-cyan)' }}></span>
+                            stake earning yield
+                          </div>
+                        )}
+                        {j.stakeYield !== undefined && j.stakeYield > 0n && (
+                          <div style={{ fontSize: 9, color: 'var(--warp-success)', marginTop: 2, fontFamily: 'monospace' }}>
+                            + {formatUnits(j.stakeYield, 6)} USDC stake yield
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--warp-muted)' }}>—</span>
+                    )}
+                  </td>
                   <td><span className="status-badge" style={{ color: STATUS_COLORS[getStatusLabel(j.status)] }}>{getStatusLabel(j.status)}</span></td>
                   <td>
                     {j.status === 4 && (
@@ -329,6 +399,10 @@ export function JobsTab() {
       )}
 
       <div className="form-grid">
+        <div style={{ gridColumn: '1 / -1', marginBottom: 16 }}>
+          <VerificationHelper />
+        </div>
+
         <div className="form-card">
           <div className="form-title"><Briefcase size={16} /> Post Job</div>
           
@@ -445,7 +519,11 @@ export function JobsTab() {
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={pickupJobId} onChange={e=>setPickupJobId(e.target.value)}/></div>
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-magenta)'}}>AGENT_ID</label><input className="warp-input" type="number" value={pickupAgentId} onChange={e=>setPickupAgentId(e.target.value)}/></div>
           </div>
-          <button className="warp-btn secondary" onClick={handlePickup} disabled={!isConnected||loading}><Play size={14}/> Claim</button>
+          <div className="form-field" style={{marginTop:8}}>
+            <label className="field-label" style={{color:'var(--warp-success)'}}>CAPABILITY ATTESTATION (OR '0x')</label>
+            <input className="warp-input" placeholder="0x..." value={pickupProof} onChange={e=>setPickupProof(e.target.value)}/>
+          </div>
+          <button className="warp-btn secondary" onClick={handlePickup} disabled={!isConnected||loading} style={{marginTop:8}}><Play size={14}/> Claim</button>
         </div>
 
         <div className="form-card">
@@ -454,7 +532,11 @@ export function JobsTab() {
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={submitJobId} onChange={e=>setSubmitJobId(e.target.value)}/></div>
             <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-warning)'}}>RESULT_HASH</label><input className="warp-input" placeholder="QmHash..." value={resultHash} onChange={e=>setResultHash(e.target.value)}/></div>
           </div>
-          <button className="warp-btn secondary" onClick={handleSubmit} disabled={!isConnected||loading}><CheckCircle size={14}/> Submit</button>
+          <div className="form-field" style={{marginTop:8}}>
+            <label className="field-label" style={{color:'var(--warp-success)'}}>ZK/EXECUTION PROOF (OR '0x')</label>
+            <input className="warp-input" placeholder="0x..." value={submitProof} onChange={e=>setSubmitProof(e.target.value)}/>
+          </div>
+          <button className="warp-btn secondary" onClick={handleSubmit} disabled={!isConnected||loading} style={{marginTop:8}}><CheckCircle size={14}/> Submit</button>
         </div>
 
         <div className="form-card">

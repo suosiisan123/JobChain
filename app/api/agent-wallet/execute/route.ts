@@ -20,11 +20,11 @@ export async function POST(req: Request) {
     let abiParameters: string[] = []
 
     if (functionName === 'pickupJob') {
-      abiFunctionSignature = 'pickupJob(uint256,uint256)'
-      abiParameters = [String(args[0]), String(args[1])]
+      abiFunctionSignature = 'pickupJob(uint256,uint256,bytes)'
+      abiParameters = [String(args[0]), String(args[1]), String(args[2] || '0x')]
     } else if (functionName === 'submitResult') {
-      abiFunctionSignature = 'submitResult(uint256,string)'
-      abiParameters = [String(args[0]), String(args[1])]
+      abiFunctionSignature = 'submitResult(uint256,string,bytes)'
+      abiParameters = [String(args[0]), String(args[1]), String(args[2] || '0x')]
     } else {
       return NextResponse.json({ error: `Unsupported function name: ${functionName}` }, { status: 400 })
     }
