@@ -5,12 +5,14 @@ pragma solidity ^0.8.24;
  * @title JobChainV2
  * @notice Decentralized AI Agent Job Queue with ERC-8004 Identity + ERC-8183 Job Protocol
  * @dev Deployed on Arc Testnet — USDC is the native gas token
+ * @dev Deployed on Arc Testnet — Multi-currency support (USDC/EURC) with StableFX routing
  */
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function transfer(address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
 }
 
 interface IIdentityRegistry {
@@ -32,15 +34,26 @@ interface IReputationRegistry {
     ) external;
 }
 
+interface IStableFX {
+    function swap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) external returns (uint256 amountOut);
+}
+
 contract JobChainV2 {
     // ══════════════════════════════════════════════════════
     // State
     // ══════════════════════════════════════════════════════
 
     IERC20 public immutable usdc;
+    IERC20 public immutable eurc;
     IIdentityRegistry public immutable identityRegistry;
     IReputationRegistry public immutable reputationRegistry;
     address public owner;
+    address public stableFX;
 
     // ── Agent Local State (Metrics & Collateral) ──
     struct Agent {
@@ -53,6 +66,7 @@ contract JobChainV2 {
     }
 
     mapping(uint256 => Agent) public agents;
+    mapping(uint256 => address) public agentPayoutToken; // Preferred payout token address per agent
 
     // ── Job Queue (ERC-8183 inspired) ──
     enum JobStatus { Open, InProgress, Submitted, Completed, Failed, Cancelled }
@@ -68,13 +82,15 @@ contract JobChainV2 {
         string resultHash;
         uint8 rating; // 1-5 stars, 0 = unrated
         uint256 createdAt;
+        address paymentToken; // USDC or EURC
     }
 
     mapping(uint256 => Job) public jobs;
     uint256 public nextJobId;
 
     // ── Protocol Treasury ──
-    uint256 public protocolFees;
+    uint256 public protocolFees; // Legacy USDC accumulated fees
+    mapping(address => uint256) public protocolTokenFees; // Token -> fee balance
     uint256 public constant PROTOCOL_FEE_BPS = 250; // 2.5%
     uint256 public constant MIN_STAKE = 1e6; // 1 USDC (6 decimals)
     uint256 public constant SLASH_PERCENTAGE = 10; // 10% slash on failure
@@ -94,20 +110,35 @@ contract JobChainV2 {
     event PaymentReleased(uint256 indexed jobId, uint256 indexed agentId, uint256 amount);
     event JobFailed(uint256 indexed jobId, uint256 indexed agentId, string reason);
     event JobCancelled(uint256 indexed jobId);
+    event AgentPayoutPreferenceUpdated(uint256 indexed agentId, address indexed token);
 
     // ══════════════════════════════════════════════════════
     // Constructor
     // ══════════════════════════════════════════════════════
 
-    constructor(address _usdc, address _identityRegistry, address _reputationRegistry) {
+    constructor(
+        address _usdc,
+        address _eurc,
+        address _identityRegistry,
+        address _reputationRegistry,
+        address _stableFX
+    ) {
         usdc = IERC20(_usdc);
+        eurc = IERC20(_eurc);
         identityRegistry = IIdentityRegistry(_identityRegistry);
         reputationRegistry = IReputationRegistry(_reputationRegistry);
+        stableFX = _stableFX;
         owner = msg.sender;
     }
 
+    // ── Setter for StableFX address ──
+    function setStableFX(address _stableFX) external {
+        require(msg.sender == owner, "Only owner");
+        stableFX = _stableFX;
+    }
+
     // ══════════════════════════════════════════════════════
-    // Agent Collateral (Staking)
+    // Agent Collateral (Staking) & Account Settings
     // ══════════════════════════════════════════════════════
 
     function stakeCollateral(uint256 _agentId, uint256 _amount) external {
@@ -126,6 +157,13 @@ contract JobChainV2 {
         emit AgentStaked(_agentId, _amount, a.stakedAmount);
     }
 
+    function setAgentPayoutToken(uint256 _agentId, address _token) external {
+        require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
+        require(_token == address(usdc) || _token == address(eurc), "Unsupported token preference");
+        agentPayoutToken[_agentId] = _token;
+        emit AgentPayoutPreferenceUpdated(_agentId, _token);
+    }
+
     function getAgentReputation(uint256 _agentId) external view returns (uint256 score, uint256 completed, uint256 failed) {
         Agent storage a = agents[_agentId];
         score = a.completedJobs > 0 ? (a.totalScore * 100) / a.completedJobs : 0;
@@ -134,19 +172,21 @@ contract JobChainV2 {
     }
 
     // ══════════════════════════════════════════════════════
-    // Job Queue (ERC-8183)
+    // Job Queue (ERC-8183 with multi-currency options)
     // ══════════════════════════════════════════════════════
 
     function postJob(
         string calldata _description,
         string calldata _requiredCapabilities,
         uint256 _reward,
-        uint256 _deadline
+        uint256 _deadline,
+        address _paymentToken
     ) external returns (uint256) {
+        require(_paymentToken == address(usdc) || _paymentToken == address(eurc), "Unsupported payment token");
         require(_reward > 0, "Reward must be > 0");
         require(_deadline > block.timestamp, "Deadline must be future");
 
-        require(usdc.transferFrom(msg.sender, address(this), _reward), "Escrow lock failed");
+        require(IERC20(_paymentToken).transferFrom(msg.sender, address(this), _reward), "Escrow lock failed");
 
         uint256 id = nextJobId++;
         jobs[id] = Job({
@@ -159,7 +199,8 @@ contract JobChainV2 {
             status: JobStatus.Open,
             resultHash: "",
             rating: 0,
-            createdAt: block.timestamp
+            createdAt: block.timestamp,
+            paymentToken: _paymentToken
         });
 
         emit JobPosted(id, msg.sender, _reward, _requiredCapabilities, _deadline);
@@ -201,10 +242,13 @@ contract JobChainV2 {
 
         Agent storage a = agents[j.assignedAgent];
 
-        // Calculate fee
+        // 1. Calculate fee in the source token
         uint256 fee = (j.reward * PROTOCOL_FEE_BPS) / 10000;
-        uint256 payout = j.reward - fee;
-        protocolFees += fee;
+        uint256 payoutInSource = j.reward - fee;
+        protocolTokenFees[j.paymentToken] += fee;
+        if (j.paymentToken == address(usdc)) {
+            protocolFees += fee;
+        }
 
         // Update job
         j.status = JobStatus.Completed;
@@ -217,8 +261,22 @@ contract JobChainV2 {
         // Fetch agent owner from IdentityRegistry
         address agentOwner = identityRegistry.ownerOf(j.assignedAgent);
 
-        // Pay agent
-        require(usdc.transfer(agentOwner, payout), "Payment failed");
+        // Fetch agent's preferred payout currency settings
+        address preferredToken = agentPayoutToken[j.assignedAgent];
+        if (preferredToken == address(0)) {
+            preferredToken = j.paymentToken; // fallback to the job's funding token
+        }
+
+        uint256 finalPayoutAmount = payoutInSource;
+
+        // 2. Perform on-chain swap using StableFX if preference differs
+        if (preferredToken != j.paymentToken) {
+            uint256 minAmountOut = (payoutInSource * 95) / 100; // Slippage tolerance: 5%
+            finalPayoutAmount = _swapTokens(j.paymentToken, preferredToken, payoutInSource, minAmountOut);
+        }
+
+        // Pay agent in preferred token
+        require(IERC20(preferredToken).transfer(agentOwner, finalPayoutAmount), "Payment failed");
 
         // Submit feedback to official ReputationRegistry (using defensive try-catch)
         bytes32 refHash = keccak256(abi.encodePacked("successful_job", _jobId));
@@ -235,7 +293,7 @@ contract JobChainV2 {
         ) {} catch {}
 
         emit JobApproved(_jobId, _rating);
-        emit PaymentReleased(_jobId, j.assignedAgent, payout);
+        emit PaymentReleased(_jobId, j.assignedAgent, finalPayoutAmount);
     }
 
     function failJob(uint256 _jobId, string calldata _reason) external {
@@ -249,6 +307,7 @@ contract JobChainV2 {
         uint256 slashAmount = (a.stakedAmount * SLASH_PERCENTAGE) / 100;
         if (slashAmount > 0) {
             a.stakedAmount -= slashAmount;
+            protocolTokenFees[address(usdc)] += slashAmount;
             protocolFees += slashAmount;
             emit AgentSlashed(j.assignedAgent, slashAmount, _reason);
         }
@@ -261,9 +320,9 @@ contract JobChainV2 {
 
         a.failedJobs++;
 
-        // Return escrow to poster
+        // Return escrow to poster in the currency they deposited
         j.status = JobStatus.Failed;
-        require(usdc.transfer(j.poster, j.reward), "Refund failed");
+        require(IERC20(j.paymentToken).transfer(j.poster, j.reward), "Refund failed");
 
         // Submit feedback to official ReputationRegistry (defensive try-catch)
         bytes32 refHash = keccak256(abi.encodePacked("failed_job", _jobId));
@@ -288,7 +347,7 @@ contract JobChainV2 {
         require(j.status == JobStatus.Open, "Can only cancel open jobs");
 
         j.status = JobStatus.Cancelled;
-        require(usdc.transfer(j.poster, j.reward), "Refund failed");
+        require(IERC20(j.paymentToken).transfer(j.poster, j.reward), "Refund failed");
 
         emit JobCancelled(_jobId);
     }
@@ -300,11 +359,12 @@ contract JobChainV2 {
     function getJob(uint256 _jobId) external view returns (
         address poster, string memory description, string memory requiredCapabilities,
         uint256 reward, uint256 deadline, uint256 assignedAgent,
-        JobStatus status, string memory resultHash, uint8 rating, uint256 createdAt
+        JobStatus status, string memory resultHash, uint8 rating, uint256 createdAt,
+        address paymentToken
     ) {
         Job storage j = jobs[_jobId];
         return (j.poster, j.description, j.requiredCapabilities, j.reward, j.deadline,
-                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt);
+                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt, j.paymentToken);
     }
 
     function getAgent(uint256 _agentId) external view returns (
@@ -321,12 +381,41 @@ contract JobChainV2 {
                 a.totalScore, a.failedJobs, a.isActive, a.registeredAt);
     }
 
+    // ── Internal StableFX swap routing helper ──
+    function _swapTokens(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) internal returns (uint256) {
+        if (stableFX == address(0)) {
+            return amountIn; // Fallback
+        }
+        IERC20(tokenIn).approve(stableFX, amountIn);
+        try IStableFX(stableFX).swap(tokenIn, tokenOut, amountIn, minAmountOut) returns (uint256 amountOut) {
+            return amountOut;
+        } catch {
+            return amountIn; // Fallback to source token if swap precompile errors/fails
+        }
+    }
+
     // ── Owner Functions ──
 
     function withdrawFees() external {
         require(msg.sender == owner, "Only owner");
         uint256 amount = protocolFees;
         protocolFees = 0;
+        protocolTokenFees[address(usdc)] = 0;
         require(usdc.transfer(owner, amount), "Withdraw failed");
+    }
+
+    function withdrawTokenFees(address _token) external {
+        require(msg.sender == owner, "Only owner");
+        uint256 amount = protocolTokenFees[_token];
+        protocolTokenFees[_token] = 0;
+        if (_token == address(usdc)) {
+            protocolFees = 0;
+        }
+        require(IERC20(_token).transfer(owner, amount), "Withdraw failed");
     }
 }
