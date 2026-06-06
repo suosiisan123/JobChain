@@ -69,7 +69,7 @@ contract JobChainV2 {
     mapping(uint256 => address) public agentPayoutToken; // Preferred payout token address per agent
 
     // ── Job Queue (ERC-8183 inspired) ──
-    enum JobStatus { Open, InProgress, Submitted, Completed, Failed, Cancelled }
+    enum JobStatus { Open, InProgress, Submitted, Completed, Failed, Cancelled, Disputed }
 
     struct Job {
         address poster;
@@ -83,10 +83,23 @@ contract JobChainV2 {
         uint8 rating; // 1-5 stars, 0 = unrated
         uint256 createdAt;
         address paymentToken; // USDC or EURC
+        uint256 failedAt; // Timestamp when marked failed
     }
 
     mapping(uint256 => Job) public jobs;
     uint256 public nextJobId;
+
+    // ── Disputes & Arbitration ──
+    struct Dispute {
+        uint256 disputedAt;
+        uint256 approveWeight;
+        uint256 rejectWeight;
+        bool resolved;
+    }
+
+    mapping(uint256 => Dispute) public disputes;
+    mapping(uint256 => mapping(uint256 => bool)) public hasVoted;
+    mapping(uint256 => uint256[]) public disputeVoters;
 
     // ── Protocol Treasury ──
     uint256 public protocolFees; // Legacy USDC accumulated fees
@@ -111,6 +124,11 @@ contract JobChainV2 {
     event JobFailed(uint256 indexed jobId, uint256 indexed agentId, string reason);
     event JobCancelled(uint256 indexed jobId);
     event AgentPayoutPreferenceUpdated(uint256 indexed agentId, address indexed token);
+    
+    event JobFailedFinalized(uint256 indexed jobId, uint256 indexed agentId);
+    event DisputeOpened(uint256 indexed jobId, uint256 indexed agentId, address indexed opener);
+    event DisputeVoteCast(uint256 indexed jobId, uint256 indexed agentId, address indexed voter, bool supportAgent, uint256 weight);
+    event DisputeResolved(uint256 indexed jobId, bool resolvedInFavorOfAgent, uint256 approveWeight, uint256 rejectWeight);
 
     // ══════════════════════════════════════════════════════
     // Constructor
@@ -200,7 +218,8 @@ contract JobChainV2 {
             resultHash: "",
             rating: 0,
             createdAt: block.timestamp,
-            paymentToken: _paymentToken
+            paymentToken: _paymentToken,
+            failedAt: 0
         });
 
         emit JobPosted(id, msg.sender, _reward, _requiredCapabilities, _deadline);
@@ -301,6 +320,18 @@ contract JobChainV2 {
         require(j.poster == msg.sender, "Only poster can fail");
         require(j.status == JobStatus.InProgress || j.status == JobStatus.Submitted, "Invalid status");
 
+        j.status = JobStatus.Failed;
+        j.failedAt = block.timestamp;
+
+        emit JobFailed(_jobId, j.assignedAgent, _reason);
+    }
+
+    function claimFailedRefund(uint256 _jobId) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Failed, "Job not failed");
+        require(j.failedAt > 0, "No failure registered");
+        require(block.timestamp >= j.failedAt + 24 hours, "Dispute window still open");
+
         Agent storage a = agents[j.assignedAgent];
 
         // Slash agent stake
@@ -309,7 +340,7 @@ contract JobChainV2 {
             a.stakedAmount -= slashAmount;
             protocolTokenFees[address(usdc)] += slashAmount;
             protocolFees += slashAmount;
-            emit AgentSlashed(j.assignedAgent, slashAmount, _reason);
+            emit AgentSlashed(j.assignedAgent, slashAmount, "Job failed finalization");
         }
 
         // Deactivate if stake too low
@@ -320,25 +351,209 @@ contract JobChainV2 {
 
         a.failedJobs++;
 
-        // Return escrow to poster in the currency they deposited
-        j.status = JobStatus.Failed;
+        // Refund poster
         require(IERC20(j.paymentToken).transfer(j.poster, j.reward), "Refund failed");
 
         // Submit feedback to official ReputationRegistry (defensive try-catch)
-        bytes32 refHash = keccak256(abi.encodePacked("failed_job", _jobId));
-        int128 score = -50; // negative score for failure
+        bytes32 refHash = keccak256(abi.encodePacked("failed_job_finalized", _jobId));
+        int128 score = -50;
         try reputationRegistry.giveFeedback(
             j.assignedAgent,
             score,
             0,
             "failed_job",
-            _reason,
+            "Job failed finalization",
             "",
             "",
             refHash
         ) {} catch {}
 
-        emit JobFailed(_jobId, j.assignedAgent, _reason);
+        emit JobFailedFinalized(_jobId, j.assignedAgent);
+    }
+
+    function openDispute(uint256 _jobId) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Failed, "Job not failed");
+        require(j.failedAt > 0, "No failure registered");
+        require(block.timestamp < j.failedAt + 24 hours, "Dispute window closed");
+        require(identityRegistry.ownerOf(j.assignedAgent) == msg.sender, "Only assigned agent can dispute");
+
+        j.status = JobStatus.Disputed;
+
+        disputes[_jobId] = Dispute({
+            disputedAt: block.timestamp,
+            approveWeight: 0,
+            rejectWeight: 0,
+            resolved: false
+        });
+
+        emit DisputeOpened(_jobId, j.assignedAgent, msg.sender);
+    }
+
+    function castVote(uint256 _jobId, uint256 _agentId, bool _supportAgent) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Disputed, "Job not disputed");
+        Dispute storage d = disputes[_jobId];
+        require(!d.resolved, "Dispute already resolved");
+        require(block.timestamp < d.disputedAt + 48 hours, "Voting window closed");
+
+        // Verify voter is the owner of the voting agent
+        require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
+        
+        // Verify eligibility of the voting agent
+        require(isEligibleValidator(_agentId), "Agent not eligible validator");
+        
+        // Verify agent is not the assigned agent of the job being disputed
+        require(j.assignedAgent != _agentId, "Assigned agent cannot vote");
+
+        // Prevent double voting
+        require(!hasVoted[_jobId][_agentId], "Already voted");
+        hasVoted[_jobId][_agentId] = true;
+        disputeVoters[_jobId].push(_agentId);
+
+        // Calculate vote weight based on agent reputation (average score * 100)
+        Agent storage a = agents[_agentId];
+        uint256 weight = (a.totalScore * 100) / a.completedJobs;
+
+        if (_supportAgent) {
+            d.approveWeight += weight;
+        } else {
+            d.rejectWeight += weight;
+        }
+
+        emit DisputeVoteCast(_jobId, _agentId, msg.sender, _supportAgent, weight);
+    }
+
+    function resolveDispute(uint256 _jobId) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Disputed, "Job not disputed");
+        Dispute storage d = disputes[_jobId];
+        require(!d.resolved, "Already resolved");
+        require(block.timestamp >= d.disputedAt + 48 hours, "Voting window still open");
+
+        d.resolved = true;
+
+        uint256 validatorFee = j.reward / 100; // 1% validator fee
+        uint256 rewardAfterVoterFee = j.reward - validatorFee;
+
+        // Distribute voter fees to the voters
+        uint256 voterCount = disputeVoters[_jobId].length;
+        if (voterCount > 0 && validatorFee > 0) {
+            uint256 share = validatorFee / voterCount;
+            if (share > 0) {
+                for (uint256 i = 0; i < voterCount; i++) {
+                    uint256 voterAgentId = disputeVoters[_jobId][i];
+                    address voterOwner = identityRegistry.ownerOf(voterAgentId);
+                    IERC20(j.paymentToken).transfer(voterOwner, share);
+                }
+            }
+        }
+
+        // Tally results
+        if (d.approveWeight > d.rejectWeight) {
+            // Agent wins
+            j.status = JobStatus.Completed;
+
+            Agent storage a = agents[j.assignedAgent];
+            a.completedJobs++;
+            a.totalScore += 5; // Default 5 rating for successful dispute defense
+
+            // Calculate protocol fee from the remaining reward
+            uint256 protocolFee = (rewardAfterVoterFee * PROTOCOL_FEE_BPS) / 10000;
+            uint256 finalPayout = rewardAfterVoterFee - protocolFee;
+            protocolTokenFees[j.paymentToken] += protocolFee;
+            if (j.paymentToken == address(usdc)) {
+                protocolFees += protocolFee;
+            }
+
+            address agentOwner = identityRegistry.ownerOf(j.assignedAgent);
+            address preferredToken = agentPayoutToken[j.assignedAgent];
+            if (preferredToken == address(0)) {
+                preferredToken = j.paymentToken;
+            }
+
+            uint256 finalPayoutAmount = finalPayout;
+            if (preferredToken != j.paymentToken) {
+                uint256 minAmountOut = (finalPayout * 95) / 100;
+                finalPayoutAmount = _swapTokens(j.paymentToken, preferredToken, finalPayout, minAmountOut);
+            }
+
+            require(IERC20(preferredToken).transfer(agentOwner, finalPayoutAmount), "Payout failed");
+
+            // Feedback (reputation increase)
+            bytes32 refHash = keccak256(abi.encodePacked("dispute_won", _jobId));
+            try reputationRegistry.giveFeedback(
+                j.assignedAgent,
+                100, // max reputation score
+                0,
+                "dispute_won",
+                "Dispute resolved in favor of agent",
+                "",
+                "",
+                refHash
+            ) {} catch {}
+
+            emit DisputeResolved(_jobId, true, d.approveWeight, d.rejectWeight);
+            emit PaymentReleased(_jobId, j.assignedAgent, finalPayoutAmount);
+
+        } else {
+            // Poster wins (or tie)
+            j.status = JobStatus.Failed;
+
+            Agent storage a = agents[j.assignedAgent];
+            uint256 slashAmount = (a.stakedAmount * SLASH_PERCENTAGE) / 100;
+            if (slashAmount > 0) {
+                a.stakedAmount -= slashAmount;
+                protocolTokenFees[address(usdc)] += slashAmount;
+                protocolFees += slashAmount;
+                emit AgentSlashed(j.assignedAgent, slashAmount, "Dispute lost");
+            }
+
+            if (a.stakedAmount < MIN_STAKE) {
+                a.isActive = false;
+                emit AgentDeactivated(j.assignedAgent);
+            }
+
+            a.failedJobs++;
+
+            // Refund poster remaining reward
+            require(IERC20(j.paymentToken).transfer(j.poster, rewardAfterVoterFee), "Refund failed");
+
+            // Feedback (reputation slash)
+            bytes32 refHash = keccak256(abi.encodePacked("dispute_lost", _jobId));
+            try reputationRegistry.giveFeedback(
+                j.assignedAgent,
+                -75,
+                0,
+                "dispute_lost",
+                "Dispute resolved in favor of poster",
+                "",
+                "",
+                refHash
+            ) {} catch {}
+
+            emit DisputeResolved(_jobId, false, d.approveWeight, d.rejectWeight);
+        }
+    }
+
+    function isEligibleValidator(uint256 _agentId) public view returns (bool) {
+        Agent storage a = agents[_agentId];
+        if (!a.isActive) return false;
+        if (a.completedJobs <= 10) return false;
+        if (a.totalScore <= a.completedJobs * 4) return false;
+        return true;
+    }
+
+    function getDispute(uint256 _jobId) external view returns (
+        uint256 disputedAt,
+        uint256 approveWeight,
+        uint256 rejectWeight,
+        bool resolved,
+        uint256 failedTime,
+        uint256 voterCount
+    ) {
+        Dispute storage d = disputes[_jobId];
+        return (d.disputedAt, d.approveWeight, d.rejectWeight, d.resolved, jobs[_jobId].failedAt, disputeVoters[_jobId].length);
     }
 
     function cancelJob(uint256 _jobId) external {
@@ -360,11 +575,11 @@ contract JobChainV2 {
         address poster, string memory description, string memory requiredCapabilities,
         uint256 reward, uint256 deadline, uint256 assignedAgent,
         JobStatus status, string memory resultHash, uint8 rating, uint256 createdAt,
-        address paymentToken
+        address paymentToken, uint256 failedAt
     ) {
         Job storage j = jobs[_jobId];
         return (j.poster, j.description, j.requiredCapabilities, j.reward, j.deadline,
-                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt, j.paymentToken);
+                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt, j.paymentToken, j.failedAt);
     }
 
     function getAgent(uint256 _agentId) external view returns (

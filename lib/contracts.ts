@@ -193,6 +193,59 @@ export const jobChainAbi = [
   },
   {
     inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "claimFailedRefund",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "openDispute",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_agentId", type: "uint256" },
+      { name: "_supportAgent", type: "bool" }
+    ],
+    name: "castVote",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "resolveDispute",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_agentId", type: "uint256" }],
+    name: "isEligibleValidator",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "getDispute",
+    outputs: [
+      { name: "disputedAt", type: "uint256" },
+      { name: "approveWeight", type: "uint256" },
+      { name: "rejectWeight", type: "uint256" },
+      { name: "resolved", type: "bool" },
+      { name: "failedTime", type: "uint256" },
+      { name: "voterCount", type: "uint256" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
     name: "cancelJob",
     outputs: [],
     stateMutability: "nonpayable",
@@ -213,6 +266,7 @@ export const jobChainAbi = [
       { name: "rating", type: "uint8" },
       { name: "createdAt", type: "uint256" },
       { name: "paymentToken", type: "address" },
+      { name: "failedAt", type: "uint256" },
     ],
     stateMutability: "view",
     type: "function"
