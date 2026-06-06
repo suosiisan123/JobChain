@@ -34,6 +34,12 @@ export function DashboardTab() {
   const { data: protocolFees } = useReadContract({
     address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'protocolFees',
   })
+  const { data: cumulativeYield } = useReadContract({
+    address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'cumulativeYield',
+  })
+  const { data: yieldTVL } = useReadContract({
+    address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'yieldTVL',
+  })
 
   // Fetch on-chain data for charts
   useEffect(() => {
@@ -175,6 +181,44 @@ export function DashboardTab() {
           <div className="stat-icon" style={{ color: 'var(--warp-warning)' }}><TrendingUp size={24} /></div>
           <div className="stat-value">{successRate}%</div>
           <div className="stat-label">Completion Rate</div>
+        </div>
+      </div>
+
+      {/* ── Yield Generating Escrow & Staking Pools Analytics ── */}
+      <div className="form-card" style={{ padding: 20, marginTop: 24, background: 'linear-gradient(135deg, rgba(122, 162, 247, 0.05) 0%, rgba(158, 206, 106, 0.05) 100%)', border: '1px solid var(--warp-border)' }}>
+        <div style={{ color: 'var(--warp-cyan)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <TrendingUp size={14} /> YIELD GENERATING ESCROWS & STAKING POOLS
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
+          <div>
+            <div style={{ color: 'var(--warp-muted)', fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>ACTIVE YIELD TVL</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-cyan)', marginTop: 4 }}>
+              ${yieldTVL ? (Number(yieldTVL) / 1e6).toFixed(2) : '0.00'} <span style={{ fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'normal' }}>USDC</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--warp-muted)', marginTop: 4 }}>Staked collateral & active job escrows</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--warp-muted)', fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>CUMULATIVE YIELD GENERATED</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-success)', marginTop: 4 }}>
+              ${cumulativeYield ? (Number(cumulativeYield) / 1e6).toFixed(4) : '0.0000'} <span style={{ fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'normal' }}>USDC</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--warp-muted)', marginTop: 4 }}>Total interest generated on-chain</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--warp-muted)', fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>CURRENT APY</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-warning)', marginTop: 4 }}>
+              8.50% <span style={{ fontSize: 11, color: 'var(--warp-success)', fontWeight: 'bold' }}>+0.5% BOOST</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--warp-muted)', marginTop: 4 }}>Auto-compounding MockYieldPool</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--warp-muted)', fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>YIELD DISTRIBUTION SPLIT</div>
+            <div style={{ fontSize: 11, color: 'var(--warp-text)', marginTop: 6, lineHeight: '1.4', fontFamily: 'monospace' }}>
+              • 50% AI Agent (Payout Boost)<br/>
+              • 30% Job Poster (Cash-back)<br/>
+              • 20% Protocol Treasury
+            </div>
+          </div>
         </div>
       </div>
 
