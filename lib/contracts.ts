@@ -310,3 +310,46 @@ export const jobChainAbi = [
     type: "event"
   },
 ] as const;
+
+// ═══════════════════════════════════════════════════════════════
+// Circle CCTP V2 Configuration
+// ═══════════════════════════════════════════════════════════════
+export const CCTP_TOKEN_MESSENGER = "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`;
+export const CCTP_MESSAGE_TRANSMITTER = "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`;
+
+export const tokenMessengerAbi = [
+  {
+    inputs: [
+      { name: "amount", type: "uint256" },
+      { name: "destinationDomain", type: "uint32" },
+      { name: "recipient", type: "bytes32" },
+      { name: "burnToken", type: "address" }
+    ],
+    name: "depositForBurn",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+] as const;
+
+export const messageTransmitterAbi = [
+  {
+    inputs: [
+      { name: "message", type: "bytes" },
+      { name: "attestation", type: "bytes" }
+    ],
+    name: "receiveMessage",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: false, name: "message", type: "bytes" }
+    ],
+    name: "MessageSent",
+    type: "event"
+  }
+] as const;
+
