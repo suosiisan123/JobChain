@@ -18,6 +18,8 @@ import {
 import { useCCTP, CCTP_CHAINS } from '@/hooks/useCCTP'
 import { BridgeStatusTracker } from '@/components/BridgeStatusTracker'
 import { VerificationHelper } from '@/components/VerificationHelper'
+import { AuctionCard } from '@/components/AuctionCard'
+import { DependencyTree } from '@/components/DependencyTree'
 
 const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled', 'Disputed'] as const
 const STATUS_COLORS: Record<string, string> = {
@@ -36,6 +38,12 @@ interface JobData {
   stakeDepositedInPool?: boolean;
   rewardYield?: bigint;
   stakeYield?: bigint;
+  auctionType?: number;
+  startPrice?: bigint;
+  floorPrice?: bigint;
+  decayPeriod?: bigint;
+  parentJobId?: number;
+  hasParent?: boolean;
 }
 
 export function JobsTab() {
@@ -47,6 +55,17 @@ export function JobsTab() {
   const [skills, setSkills] = useState('')
   const [reward, setReward] = useState('')
   const [deadlineHours, setDeadlineHours] = useState('24')
+
+  // Auction & Bidding states
+  const [auctionType, setAuctionType] = useState<'Fixed' | 'Dutch' | 'Bid'>('Fixed')
+  const [floorPrice, setFloorPrice] = useState('')
+  const [decayPeriodMinutes, setDecayPeriodMinutes] = useState('30')
+
+  // Recursive sub-job delegation states
+  const [subParentJobId, setSubParentJobId] = useState('')
+  const [subDesc, setSubDesc] = useState('')
+  const [subReward, setSubReward] = useState('')
+  const [subDeadlineHours, setSubDeadlineHours] = useState('24')
 
   // Multi-currency & Forex states
   const [paymentCurrency, setPaymentCurrency] = useState<'USDC' | 'EURC'>('USDC')
@@ -143,6 +162,12 @@ export function JobsTab() {
           status: Number(d[6]), resultHash: d[7], rating: Number(d[8]), createdAt: Number(d[9]),
           paymentToken: d[10] || USDC_ADDRESS_ARC,
           failedAt: Number(d[11] || 0),
+          auctionType: Number(d[12] || 0),
+          startPrice: d[13] || d[3],
+          floorPrice: d[14] || d[3],
+          decayPeriod: d[15] || 0n,
+          parentJobId: d[16] ? Number(d[16]) : 0,
+          hasParent: !!d[17],
           exchangeRateAtDeposit: yieldInfo[0],
           agentExchangeRateAtPickup: yieldInfo[1],
           depositedInPool: yieldInfo[2],
@@ -174,18 +199,47 @@ export function JobsTab() {
   }
 
   const handlePostJob = () => txToast('Posting job...', async () => {
-    const amount = parseUnits(reward, 6)
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
     const tokenAddress = paymentCurrency === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
-    await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, amount] })
-    const hash = await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
-      functionName: 'postJob',
-      args: [desc, skills, amount, deadline, tokenAddress]
-    })
-    setDesc(''); setSkills(''); setReward('')
-    return hash
+    
+    if (auctionType === 'Fixed') {
+      const amount = parseUnits(reward, 6)
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
+      await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, amount] })
+      const hash = await writeContractAsync({
+        address: JOBCHAIN_CONTRACT_ADDRESS,
+        abi: jobChainAbi,
+        functionName: 'postJob',
+        args: [desc, skills, amount, deadline, tokenAddress]
+      })
+      setDesc(''); setSkills(''); setReward('')
+      return hash
+    } else {
+      const startPriceAmount = parseUnits(reward, 6)
+      const floorPriceAmount = auctionType === 'Dutch' ? parseUnits(floorPrice, 6) : 0n
+      const decaySec = auctionType === 'Dutch' ? BigInt(parseInt(decayPeriodMinutes) * 60) : 0n
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
+      const typeEnum = auctionType === 'Dutch' ? 2 : 1 // 1: Bid, 2: Dutch
+      
+      await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, startPriceAmount] })
+      
+      const hash = await writeContractAsync({
+        address: JOBCHAIN_CONTRACT_ADDRESS,
+        abi: jobChainAbi,
+        functionName: 'postJobAuction',
+        args: [
+          desc,
+          skills,
+          deadline,
+          tokenAddress,
+          typeEnum,
+          startPriceAmount,
+          floorPriceAmount,
+          decaySec
+        ]
+      })
+      setDesc(''); setSkills(''); setReward(''); setFloorPrice('')
+      return hash
+    }
   })
 
   const handlePostJobWrapper = async () => {
@@ -257,6 +311,22 @@ export function JobsTab() {
       functionName: 'submitResult',
       args: [BigInt(submitJobId), resultHash, (submitProof || '0x') as `0x${string}`]
     })
+  })
+
+  const handlePostSubJob = () => txToast('Delegating sub-job...', async () => {
+    if (!subParentJobId) throw new Error('Parent Job ID is required')
+    const parentId = BigInt(subParentJobId)
+    const amount = parseUnits(subReward, 6)
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(subDeadlineHours) * 3600)
+    const hash = await writeContractAsync({
+      address: JOBCHAIN_CONTRACT_ADDRESS,
+      abi: jobChainAbi,
+      functionName: 'postSubJob',
+      args: [parentId, subDesc, amount, deadline]
+    })
+    setSubDesc(''); setSubReward(''); setSubParentJobId('')
+    fetchJobs()
+    return hash
   })
 
   const handleApprove = () => txToast('Releasing payment...', async () => {
@@ -388,6 +458,26 @@ export function JobsTab() {
               ))}
             </tbody>
           </table>
+          <div style={{ marginTop: 16 }}>
+            {jobs.filter(j => !j.hasParent).map(j => (
+              <DependencyTree key={j.id} jobs={jobs} rootJobId={j.id} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Active Auctions & Bidding Market ── */}
+      {jobs.filter(j => (j.auctionType === 1 || j.auctionType === 2) && j.status === 0).length > 0 && (
+        <div style={{ marginLeft: 24, marginRight: 24, marginBottom: 24 }}>
+          <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--warp-warning)' }}></span>
+            ACTIVE AUCTIONS & BIDDING MARKET
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 16 }}>
+            {jobs.filter(j => (j.auctionType === 1 || j.auctionType === 2) && j.status === 0).map(j => (
+              <AuctionCard key={j.id} job={j} onActionSuccess={fetchJobs} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -422,18 +512,59 @@ export function JobsTab() {
           </div>
 
           {selectedChainId === 5042002 && (
-            <div className="form-field">
-              <label className="field-label" style={{color:'var(--warp-success)'}}>PAYMENT CURRENCY</label>
-              <select
-                className="warp-input"
-                value={paymentCurrency}
-                onChange={(e) => setPaymentCurrency(e.target.value as 'USDC' | 'EURC')}
-                style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
-              >
-                <option value="USDC">USDC (USD Stablecoin)</option>
-                <option value="EURC">EURC (Euro Stablecoin)</option>
-              </select>
-            </div>
+            <>
+              <div className="form-field">
+                <label className="field-label" style={{color:'var(--warp-magenta)'}}>AUCTION PROTOCOL</label>
+                <select
+                  className="warp-input"
+                  value={auctionType}
+                  onChange={(e) => setAuctionType(e.target.value as 'Fixed' | 'Dutch' | 'Bid')}
+                  style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
+                >
+                  <option value="Fixed">Fixed Reward Escrow</option>
+                  <option value="Dutch">Dutch Decay Auction</option>
+                  <option value="Bid">Bidding & Bid Marketplace</option>
+                </select>
+              </div>
+
+              {auctionType === 'Dutch' && (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+                  <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
+                    <label className="field-label" style={{ color: 'var(--warp-warning)' }}>FLOOR PRICE ({paymentCurrency})</label>
+                    <input
+                      className="warp-input"
+                      placeholder="2.00"
+                      type="number"
+                      value={floorPrice}
+                      onChange={e => setFloorPrice(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-field" style={{ flex: 1, marginBottom: 0 }}>
+                    <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>DECAY DURATION (MINS)</label>
+                    <input
+                      className="warp-input"
+                      placeholder="30"
+                      type="number"
+                      value={decayPeriodMinutes}
+                      onChange={e => setDecayPeriodMinutes(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="form-field">
+                <label className="field-label" style={{color:'var(--warp-success)'}}>PAYMENT CURRENCY</label>
+                <select
+                  className="warp-input"
+                  value={paymentCurrency}
+                  onChange={(e) => setPaymentCurrency(e.target.value as 'USDC' | 'EURC')}
+                  style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
+                >
+                  <option value="USDC">USDC (USD Stablecoin)</option>
+                  <option value="EURC">EURC (Euro Stablecoin)</option>
+                </select>
+              </div>
+            </>
           )}
 
           {selectedChainId !== 5042002 && (
@@ -473,7 +604,9 @@ export function JobsTab() {
           <div className="form-field"><label className="field-label" style={{color:'var(--warp-warning)'}}>CAPABILITIES</label><input className="warp-input" placeholder="nlp,sentiment" value={skills} onChange={e=>setSkills(e.target.value)}/></div>
           <div style={{display:'flex',gap:12}}>
             <div className="form-field" style={{flex:1}}>
-              <label className="field-label" style={{color:'var(--warp-success)'}}>REWARD ({selectedChainId === 5042002 ? paymentCurrency : 'USDC'})</label>
+              <label className="field-label" style={{color:'var(--warp-success)'}}>
+                {auctionType === 'Fixed' ? 'REWARD' : auctionType === 'Dutch' ? 'START PRICE' : 'REWARD CAP'} ({selectedChainId === 5042002 ? paymentCurrency : 'USDC'})
+              </label>
               <input className="warp-input" placeholder="5.00" type="number" value={reward} onChange={e=>setReward(e.target.value)}/>
             </div>
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE_H</label><input className="warp-input" type="number" value={deadlineHours} onChange={e=>setDeadlineHours(e.target.value)}/></div>
@@ -575,6 +708,17 @@ export function JobsTab() {
             </div>
           </div>
           <button className="warp-btn secondary" onClick={handleSetPreference} disabled={!isConnected||loading}><Briefcase size={14}/> Set Preference</button>
+        </div>
+
+        <div className="form-card">
+          <div className="form-title" style={{color:'var(--warp-warning)'}}><Briefcase size={16} /> Delegate Sub-Job</div>
+          <div style={{display:'flex',gap:12}}>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>PARENT_JOB_ID</label><input className="warp-input" type="number" placeholder="0" value={subParentJobId} onChange={e=>setSubParentJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>SUB-REWARD</label><input className="warp-input" type="number" placeholder="2.50" value={subReward} onChange={e=>setSubReward(e.target.value)}/></div>
+          </div>
+          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-warning)'}}>DESCRIPTION</label><input className="warp-input" placeholder="Coding subtask" value={subDesc} onChange={e=>setSubDesc(e.target.value)}/></div>
+          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE (HOURS)</label><input className="warp-input" type="number" value={subDeadlineHours} onChange={e=>setSubDeadlineHours(e.target.value)}/></div>
+          <button className="warp-btn" onClick={handlePostSubJob} disabled={!isConnected||loading||!subParentJobId||!subDesc||!subReward} style={{background:'var(--warp-warning)',color:'#000'}}><Briefcase size={14}/> Delegate Subtask</button>
         </div>
       </div>
     </div>
