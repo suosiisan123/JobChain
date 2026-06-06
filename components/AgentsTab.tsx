@@ -32,7 +32,7 @@ interface AgentData {
 }
 
 export function AgentsTab() {
-  const { isConnected, writeContractAsync } = useSmartWallet()
+  const { isConnected, writeContractAsync, address } = useSmartWallet()
   const publicClient = usePublicClient()
   const [name, setName] = useState('')
   const [capabilities, setCapabilities] = useState('')
@@ -40,6 +40,58 @@ export function AgentsTab() {
   const [stakeAmount, setStakeAmount] = useState('')
   const [agents, setAgents] = useState<AgentData[]>([])
   const [loading, setLoading] = useState(false)
+
+  const [isRegisterSponsored, setIsRegisterSponsored] = useState(true)
+  const [isStakeSponsored, setIsStakeSponsored] = useState(true)
+  const [sponsorshipRemaining, setSponsorshipRemaining] = useState<number | null>(null)
+
+  // Fetch gas sponsorship remaining txs and eligibility
+  async function checkSponsorStatus() {
+    if (!address) return
+    try {
+      const res = await fetch('/api/gas-sponsor/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: address,
+          functionName: 'register',
+          contractAddress: IDENTITY_REGISTRY
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.eligible) {
+        setIsRegisterSponsored(true)
+        setSponsorshipRemaining(3 - (data.txCount - 1))
+      } else {
+        setIsRegisterSponsored(false)
+        if (res.status === 403) {
+          setSponsorshipRemaining(0)
+        }
+      }
+
+      const resStake = await fetch('/api/gas-sponsor/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: address,
+          functionName: 'stakeCollateral',
+          contractAddress: JOBCHAIN_CONTRACT_ADDRESS
+        })
+      })
+      const dataStake = await resStake.json()
+      if (resStake.ok && dataStake.eligible) {
+        setIsStakeSponsored(true)
+      } else {
+        setIsStakeSponsored(false)
+      }
+    } catch (err) {
+      console.error('Error fetching sponsor status:', err)
+    }
+  }
+
+  useEffect(() => {
+    checkSponsorStatus()
+  }, [address])
 
   // Fetch agents and sync balances
   async function fetchAgents() {
@@ -193,6 +245,7 @@ export function AgentsTab() {
       )
       setName(''); setCapabilities('')
       fetchAgents()
+      checkSponsorStatus()
     } catch (err: any) {
       toast.error(err?.shortMessage || 'Registration failed', { id: tid })
     } finally { setLoading(false) }
@@ -221,6 +274,7 @@ export function AgentsTab() {
       )
       setStakeAmount('')
       fetchAgents()
+      checkSponsorStatus()
     } catch (err: any) {
       toast.error(err?.shortMessage || 'Stake failed', { id: tid })
     } finally { setLoading(false) }
@@ -238,6 +292,17 @@ export function AgentsTab() {
       <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24 }}>
         ERC-8004 Agent Identity — Register, Stake, Build Reputation
         <br />Total Registered: {agents.length} agents
+        {address && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(122, 162, 247, 0.08)', borderRadius: 6, border: '1px solid rgba(122, 162, 247, 0.15)', fontSize: 11, color: 'var(--warp-text)' }}>
+            <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>⚡ Circle Paymaster Gas Sponsorship:</span>
+            <span style={{ marginLeft: 6 }}>
+              Onboarding actions (Agent Registration and Staking) are sponsored by Circle Paymaster.
+              {sponsorshipRemaining !== null && (
+                <span> You have <strong style={{ color: 'var(--warp-success)' }}>{sponsorshipRemaining} of 3</strong> sponsored transactions remaining.</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Agent Leaderboard ── */}
@@ -327,9 +392,19 @@ export function AgentsTab() {
       {/* ── Forms ── */}
       <div className="form-grid">
         <div className="form-card">
-          <div className="form-title"><UserPlus size={16} /> Register New Agent</div>
+          <div className="form-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UserPlus size={16} /> Register New Agent</span>
+            {isRegisterSponsored && (
+              <span className="badge" style={{ fontSize: 9, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
+                Gas Sponsored
+              </span>
+            )}
+          </div>
           <div className="form-field">
-            <label className="field-label" style={{ color: 'var(--warp-magenta)' }}>AGENT_NAME</label>
+            <label className="field-label" style={{ color: 'var(--warp-magenta)' }}>
+              AGENT_NAME
+              {isRegisterSponsored && <span style={{ marginLeft: 8, fontSize: 8, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1px 4px', borderRadius: 3, verticalAlign: 'middle', background: 'rgba(16, 185, 129, 0.08)' }}>Sponsored</span>}
+            </label>
             <input className="warp-input" placeholder="GPT-Analyzer" value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="form-field">
@@ -342,13 +417,23 @@ export function AgentsTab() {
         </div>
 
         <div className="form-card">
-          <div className="form-title"><Shield size={16} /> Stake Collateral</div>
+          <div className="form-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Shield size={16} /> Stake Collateral</span>
+            {isStakeSponsored && (
+              <span className="badge" style={{ fontSize: 9, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
+                Gas Sponsored
+              </span>
+            )}
+          </div>
           <div className="form-field">
             <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>AGENT_ID</label>
             <input className="warp-input" placeholder="0" type="number" value={stakeAgentId} onChange={e => setStakeAgentId(e.target.value)} />
           </div>
           <div className="form-field">
-            <label className="field-label" style={{ color: 'var(--warp-success)' }}>STAKE_AMOUNT_USDC</label>
+            <label className="field-label" style={{ color: 'var(--warp-success)' }}>
+              STAKE_AMOUNT_USDC
+              {isStakeSponsored && <span style={{ marginLeft: 8, fontSize: 8, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1px 4px', borderRadius: 3, verticalAlign: 'middle', background: 'rgba(16, 185, 129, 0.08)' }}>Sponsored</span>}
+            </label>
             <input className="warp-input" placeholder="5.00" type="number" step="0.01" value={stakeAmount} onChange={e => setStakeAmount(e.target.value)} />
           </div>
           <button className="warp-btn secondary" onClick={handleStake} disabled={!isConnected || loading}>
