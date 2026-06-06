@@ -18,17 +18,17 @@ import {
 import { useCCTP, CCTP_CHAINS } from '@/hooks/useCCTP'
 import { BridgeStatusTracker } from '@/components/BridgeStatusTracker'
 
-const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled'] as const
+const STATUS_LABELS = ['Open', 'InProgress', 'Submitted', 'Completed', 'Failed', 'Cancelled', 'Disputed'] as const
 const STATUS_COLORS: Record<string, string> = {
   Open: 'var(--warp-primary)', InProgress: 'var(--warp-warning)',
   Submitted: 'var(--warp-cyan)', Completed: 'var(--warp-success)',
-  Failed: 'var(--warp-error)', Cancelled: 'var(--warp-muted)',
+  Failed: 'var(--warp-error)', Cancelled: 'var(--warp-muted)', Disputed: 'var(--warp-magenta)'
 }
 
 interface JobData {
   id: number; poster: string; description: string; requiredCapabilities: string
   reward: bigint; deadline: number; assignedAgent: number
-  status: number; resultHash: string; rating: number; createdAt: number; paymentToken: string
+  status: number; resultHash: string; rating: number; createdAt: number; paymentToken: string; failedAt: number
 }
 
 export function JobsTab() {
@@ -98,32 +98,36 @@ export function JobsTab() {
   const [resultHash, setResultHash] = useState('')
   const [approveJobId, setApproveJobId] = useState('')
   const [rating, setRating] = useState('5')
+  const [failJobId, setFailJobId] = useState('')
+  const [failReason, setFailReason] = useState('')
 
   const { data: nextJobId } = useReadContract({
     address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'nextJobId',
   })
 
-  useEffect(() => {
-    async function fetchJobs() {
-      if (!publicClient || !nextJobId) return
-      const count = Number(nextJobId)
-      const list: JobData[] = []
-      for (let i = 0; i < count; i++) {
-        try {
-          const d = await publicClient.readContract({
-            address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
-            functionName: 'getJob', args: [BigInt(i)],
-          }) as unknown as any[]
-          list.push({
-            id: i, poster: d[0], description: d[1], requiredCapabilities: d[2],
-            reward: d[3], deadline: Number(d[4]), assignedAgent: Number(d[5]),
-            status: Number(d[6]), resultHash: d[7], rating: Number(d[8]), createdAt: Number(d[9]),
-            paymentToken: d[10] || USDC_ADDRESS_ARC
-          })
-        } catch { /* skip */ }
-      }
-      setJobs(list)
+  async function fetchJobs() {
+    if (!publicClient || !nextJobId) return
+    const count = Number(nextJobId)
+    const list: JobData[] = []
+    for (let i = 0; i < count; i++) {
+      try {
+        const d = await publicClient.readContract({
+          address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
+          functionName: 'getJob', args: [BigInt(i)],
+        }) as unknown as any[]
+        list.push({
+          id: i, poster: d[0], description: d[1], requiredCapabilities: d[2],
+          reward: d[3], deadline: Number(d[4]), assignedAgent: Number(d[5]),
+          status: Number(d[6]), resultHash: d[7], rating: Number(d[8]), createdAt: Number(d[9]),
+          paymentToken: d[10] || USDC_ADDRESS_ARC,
+          failedAt: Number(d[11] || 0)
+        })
+      } catch { /* skip */ }
     }
+    setJobs(list)
+  }
+
+  useEffect(() => {
     fetchJobs()
   }, [publicClient, nextJobId])
 
@@ -218,7 +222,28 @@ export function JobsTab() {
   })
 
   const handleApprove = () => txToast('Releasing payment...', async () => {
-    return await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'approveAndRelease', args: [BigInt(approveJobId), parseInt(rating)] })
+    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'approveAndRelease', args: [BigInt(approveJobId), parseInt(rating)] })
+    fetchJobs()
+    return hash
+  })
+
+  const handleFail = () => txToast('Marking job as failed...', async () => {
+    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'failJob', args: [BigInt(failJobId), failReason] })
+    setFailJobId(''); setFailReason('')
+    fetchJobs()
+    return hash
+  })
+
+  const handleOpenDispute = (jobId: number) => txToast('Opening dispute...', async () => {
+    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'openDispute', args: [BigInt(jobId)] })
+    fetchJobs()
+    return hash
+  })
+
+  const handleClaimRefund = (jobId: number) => txToast('Claiming refund...', async () => {
+    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'claimFailedRefund', args: [BigInt(jobId)] })
+    fetchJobs()
+    return hash
   })
 
   const getStatusLabel = (s: number) => STATUS_LABELS[s] || 'Unknown'
@@ -249,7 +274,7 @@ export function JobsTab() {
           </div>
           <table className="data-table">
             <thead>
-              <tr><th>ID</th><th>Description</th><th>Skills</th><th>Reward</th><th>Deadline</th><th>Agent</th><th>Status</th></tr>
+              <tr><th>ID</th><th>Description</th><th>Skills</th><th>Reward</th><th>Deadline</th><th>Agent</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {jobs.map(j => (
@@ -268,6 +293,27 @@ export function JobsTab() {
                   </td>
                   <td>{j.status > 0 ? <span style={{ color: 'var(--warp-magenta)' }}>#{j.assignedAgent}</span> : <span style={{ color: 'var(--warp-muted)' }}>—</span>}</td>
                   <td><span className="status-badge" style={{ color: STATUS_COLORS[getStatusLabel(j.status)] }}>{getStatusLabel(j.status)}</span></td>
+                  <td>
+                    {j.status === 4 && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          onClick={() => handleOpenDispute(j.id)}
+                          style={{ fontSize: 9, background: 'rgba(255, 0, 127, 0.2)', border: '1px solid var(--warp-magenta)', color: 'var(--warp-magenta)', padding: '2px 6px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+                          disabled={loading}
+                        >
+                          Dispute
+                        </button>
+                        <button
+                          onClick={() => handleClaimRefund(j.id)}
+                          style={{ fontSize: 9, background: 'rgba(16, 185, 129, 0.2)', border: '1px solid var(--warp-success)', color: 'var(--warp-success)', padding: '2px 6px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+                          disabled={loading}
+                        >
+                          Refund (24h)
+                        </button>
+                      </div>
+                    )}
+                    {j.status !== 4 && <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -418,6 +464,15 @@ export function JobsTab() {
             <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>RATING (1-5)</label><input className="warp-input" type="number" min="1" max="5" value={rating} onChange={e=>setRating(e.target.value)}/></div>
           </div>
           <button className="warp-btn" onClick={handleApprove} disabled={!isConnected||loading} style={{background:'var(--warp-success)'}}><CheckCircle size={14}/> Release Payment</button>
+        </div>
+
+        <div className="form-card">
+          <div className="form-title" style={{color:'var(--warp-error)'}}><CheckCircle size={16} /> Fail Job</div>
+          <div style={{display:'flex',gap:12}}>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={failJobId} onChange={e=>setFailJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-error)'}}>REASON</label><input className="warp-input" placeholder="Failed to deliver on time" value={failReason} onChange={e=>setFailReason(e.target.value)}/></div>
+          </div>
+          <button className="warp-btn" onClick={handleFail} disabled={!isConnected||loading} style={{background:'var(--warp-error)'}}><CheckCircle size={14}/> Fail Job</button>
         </div>
 
         <div className="form-card">

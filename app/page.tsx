@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap } from 'lucide-react'
+import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, Scale } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBalance } from 'wagmi'
 import { Toaster } from 'react-hot-toast'
 import { TerminalTab } from '@/components/TerminalTab'
 import { AgentsTab } from '@/components/AgentsTab'
 import { JobsTab } from '@/components/JobsTab'
+import { DisputesTab } from '@/components/DisputesTab'
 import { DashboardTab } from '@/components/DashboardTab'
 import { IdentityTab } from '@/components/IdentityTab'
 import { PasskeyAuth } from '@/components/PasskeyAuth'
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'identity', label: 'erc-8004', icon: Shield },
   { id: 'agents', label: 'agent-registry', icon: Users },
   { id: 'jobs', label: 'job-queue', icon: Briefcase },
+  { id: 'disputes', label: 'dispute-center', icon: Scale },
   { id: 'microtask', label: '~/micro-streams', icon: Zap },
   { id: 'passkey', label: 'passkey-account', icon: Fingerprint },
   { id: 'dashboard', label: 'dashboard', icon: BarChart3 },
@@ -195,6 +197,7 @@ export default function JobChainApp() {
             {activeTab === 'identity' && <IdentityTab />}
             {activeTab === 'agents' && <AgentsTab />}
             {activeTab === 'jobs' && <JobsTab />}
+            {activeTab === 'disputes' && <DisputesTab />}
             {activeTab === 'microtask' && <MicroStreamTab />}
             {activeTab === 'passkey' && <PasskeyAuth />}
             {activeTab === 'dashboard' && <DashboardTab />}
