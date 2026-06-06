@@ -94,6 +94,7 @@ contract JobChainV2 {
 
     // ── Job Queue (ERC-8183 inspired) ──
     enum JobStatus { Open, InProgress, Submitted, Completed, Failed, Cancelled, Disputed }
+    enum AuctionType { Fixed, Bid, Dutch }
 
     struct Job {
         address poster;
@@ -112,10 +113,45 @@ contract JobChainV2 {
         uint256 agentExchangeRateAtPickup;
         bool depositedInPool;
         bool stakeDepositedInPool;
+        AuctionType auctionType;
+        uint256 startPrice;
+        uint256 floorPrice;
+        uint256 decayPeriod;
+        uint256 parentJobId;
+        bool hasParent;
+    }
+
+    struct Bid {
+        uint256 agentId;
+        uint256 price;
+        address bidder;
+        bool refunded;
     }
 
     mapping(uint256 => Job) public jobs;
+    mapping(uint256 => Bid[]) public jobBids;
+    mapping(uint256 => uint256) public lowestBidIndex;
+    mapping(uint256 => uint256[]) public subJobIds;
     uint256 public nextJobId;
+
+    // ── Recurring Schedules (Phase 13) ──
+    struct Schedule {
+        uint256 id;
+        address poster;
+        string description;
+        string requiredCapabilities;
+        uint256 reward;
+        uint256 interval;
+        uint256 nextExecution;
+        uint256 fundedBalance;
+        uint256 maxExecutions;
+        uint256 executionsCount;
+        address paymentToken;
+        bool active;
+    }
+
+    mapping(uint256 => Schedule) public schedules;
+    uint256 public nextScheduleId;
 
     // ── Disputes & Arbitration ──
     struct Dispute {
@@ -132,7 +168,7 @@ contract JobChainV2 {
     // ── Protocol Treasury ──
     uint256 public protocolFees; // Legacy USDC accumulated fees
     mapping(address => uint256) public protocolTokenFees; // Token -> fee balance
-    uint256 public constant PROTOCOL_FEE_BPS = 250; // 2.5%
+    uint256 public PROTOCOL_FEE_BPS = 250; // 2.5% (made mutable by DAO)
     uint256 public constant MIN_STAKE = 1e6; // 1 USDC (6 decimals)
     uint256 public constant SLASH_PERCENTAGE = 10; // 10% slash on failure
 
@@ -159,10 +195,21 @@ contract JobChainV2 {
     event DisputeResolved(uint256 indexed jobId, bool resolvedInFavorOfAgent, uint256 approveWeight, uint256 rejectWeight);
     event YieldDistributed(uint256 indexed jobId, uint256 agentShare, uint256 posterShare, uint256 protocolShare);
     event YieldPoolAlert(string message);
+    event BidSubmitted(uint256 indexed jobId, uint256 indexed agentId, uint256 price, address indexed bidder);
+    event BidAccepted(uint256 indexed jobId, uint256 indexed agentId, uint256 price);
+    event SubJobPosted(uint256 indexed parentJobId, uint256 indexed childJobId, uint256 reward);
+
+    event ScheduleRegistered(uint256 indexed scheduleId, address indexed poster, uint256 interval, uint256 reward, uint256 totalBudget);
+    event ScheduleExecuted(uint256 indexed scheduleId, uint256 indexed jobId, uint256 executionIndex, uint256 keeperReward);
+    event ScheduleCancelled(uint256 indexed scheduleId, uint256 refundedBalance);
+    event ScheduleReplenished(uint256 indexed scheduleId, uint256 amount);
+    event ScheduleWithdrawn(uint256 indexed scheduleId, uint256 amount);
 
     // ══════════════════════════════════════════════════════
     // Constructor
     // ══════════════════════════════════════════════════════
+
+    address public revenueDistributor;
 
     constructor(
         address _usdc,
@@ -171,7 +218,8 @@ contract JobChainV2 {
         address _reputationRegistry,
         address _stableFX,
         address _yieldPool,
-        address _verifier
+        address _verifier,
+        address _revenueDistributor
     ) {
         usdc = IERC20(_usdc);
         eurc = IERC20(_eurc);
@@ -180,6 +228,7 @@ contract JobChainV2 {
         stableFX = _stableFX;
         yieldPool = _yieldPool;
         verifier = _verifier;
+        revenueDistributor = _revenueDistributor;
         owner = msg.sender;
     }
 
@@ -313,11 +362,249 @@ contract JobChainV2 {
             exchangeRateAtDeposit: rate,
             agentExchangeRateAtPickup: 0,
             depositedInPool: deposited,
-            stakeDepositedInPool: false
+            stakeDepositedInPool: false,
+            auctionType: AuctionType.Fixed,
+            startPrice: _reward,
+            floorPrice: _reward,
+            decayPeriod: 0,
+            parentJobId: 0,
+            hasParent: false
         });
 
         emit JobPosted(id, msg.sender, _reward, _requiredCapabilities, _deadline);
         return id;
+    }
+
+    function postJobAuction(
+        string calldata _description,
+        string calldata _requiredCapabilities,
+        uint256 _deadline,
+        address _paymentToken,
+        AuctionType _auctionType,
+        uint256 _startPrice,
+        uint256 _floorPrice,
+        uint256 _decayPeriod
+    ) external returns (uint256) {
+        require(_paymentToken == address(usdc) || _paymentToken == address(eurc), "Unsupported payment token");
+        require(_deadline > block.timestamp, "Deadline must be future");
+
+        uint256 rewardAmount = _startPrice;
+        if (_auctionType == AuctionType.Fixed) {
+            require(_startPrice > 0, "Reward must be > 0");
+        } else if (_auctionType == AuctionType.Dutch) {
+            require(_startPrice >= _floorPrice, "Start must be >= Floor");
+            require(_decayPeriod > 0, "Decay period must be > 0");
+        } else if (_auctionType == AuctionType.Bid) {
+            require(_startPrice > 0, "Max reward cap must be > 0");
+        }
+
+        require(IERC20(_paymentToken).transferFrom(msg.sender, address(this), rewardAmount), "Escrow lock failed");
+
+        uint256 rate = 0;
+        bool deposited = false;
+
+        // Try depositing to YieldPool
+        if (yieldPool != address(0)) {
+            IERC20(_paymentToken).approve(yieldPool, rewardAmount);
+            try IMockYieldPool(yieldPool).deposit(_paymentToken, rewardAmount) returns (bool success) {
+                if (success) {
+                    rate = IMockYieldPool(yieldPool).getExchangeRate(_paymentToken);
+                    deposited = true;
+                    uint256 usdcEquivalent = _paymentToken == address(usdc) ? rewardAmount : _convertToUSDC(rewardAmount);
+                    yieldTVL += usdcEquivalent;
+                }
+            } catch {}
+        }
+
+        uint256 id = nextJobId++;
+        jobs[id] = Job({
+            poster: msg.sender,
+            description: _description,
+            requiredCapabilities: _requiredCapabilities,
+            reward: rewardAmount,
+            deadline: _deadline,
+            assignedAgent: 0,
+            status: JobStatus.Open,
+            resultHash: "",
+            rating: 0,
+            createdAt: block.timestamp,
+            paymentToken: _paymentToken,
+            failedAt: 0,
+            exchangeRateAtDeposit: rate,
+            agentExchangeRateAtPickup: 0,
+            depositedInPool: deposited,
+            stakeDepositedInPool: false,
+            auctionType: _auctionType,
+            startPrice: _startPrice,
+            floorPrice: _floorPrice,
+            decayPeriod: _decayPeriod,
+            parentJobId: 0,
+            hasParent: false
+        });
+
+        emit JobPosted(id, msg.sender, rewardAmount, _requiredCapabilities, _deadline);
+        return id;
+    }
+
+    function postSubJob(
+        uint256 _parentJobId,
+        string calldata _desc,
+        uint256 _reward,
+        uint256 _deadline
+    ) external returns (uint256) {
+        Job storage parentJob = jobs[_parentJobId];
+        require(parentJob.status == JobStatus.InProgress, "Parent job not in progress");
+        // Verify Caller is the assigned agent owner of the parent job
+        require(identityRegistry.ownerOf(parentJob.assignedAgent) == msg.sender, "Not assigned agent owner");
+        
+        // Ensure reward can be locked from parent reward
+        require(_reward <= parentJob.reward, "Sub-job reward exceeds parent");
+        
+        // Prevent recursive stack overflows: depth limit 3
+        uint256 currentParentId = _parentJobId;
+        bool currentHasParent = parentJob.hasParent;
+        uint256 depth = 1;
+        while (currentHasParent) {
+            depth++;
+            require(depth <= 3, "Max delegation depth exceeded");
+            Job storage p = jobs[currentParentId];
+            currentParentId = p.parentJobId;
+            currentHasParent = p.hasParent;
+        }
+        
+        // Deduct from parent reward
+        parentJob.reward -= _reward;
+        
+        // Setup child job
+        uint256 id = nextJobId++;
+        Job storage j = jobs[id];
+        j.poster = msg.sender; // Parent agent owner is the poster
+        j.description = _desc;
+        j.reward = _reward;
+        j.deadline = _deadline;
+        j.status = JobStatus.Open;
+        j.createdAt = block.timestamp;
+        j.paymentToken = parentJob.paymentToken;
+        j.parentJobId = _parentJobId;
+        j.hasParent = true;
+        j.depositedInPool = parentJob.depositedInPool;
+        
+        // If parent was deposited in YieldPool, update child rate
+        if (j.depositedInPool && yieldPool != address(0)) {
+            j.exchangeRateAtDeposit = IMockYieldPool(yieldPool).getExchangeRate(j.paymentToken);
+        }
+        
+        subJobIds[_parentJobId].push(id);
+        
+        emit JobPosted(id, msg.sender, _reward, "", _deadline);
+        emit SubJobPosted(_parentJobId, id, _reward);
+        return id;
+    }
+
+    function getSubJobIds(uint256 _jobId) external view returns (uint256[] memory) {
+        return subJobIds[_jobId];
+    }
+
+    function getCurrentReward(uint256 _jobId) public view returns (uint256) {
+        Job storage j = jobs[_jobId];
+        if (j.auctionType == AuctionType.Fixed || j.auctionType == AuctionType.Bid) {
+            return j.reward;
+        }
+
+        // Dutch Auction
+        if (block.timestamp <= j.createdAt) {
+            return j.startPrice;
+        }
+
+        uint256 elapsed = block.timestamp - j.createdAt;
+        if (elapsed >= j.decayPeriod) {
+            return j.floorPrice;
+        }
+
+        uint256 totalDrop = j.startPrice - j.floorPrice;
+        uint256 currentDrop = (totalDrop * elapsed) / j.decayPeriod;
+        return j.startPrice - currentDrop;
+    }
+
+    function submitBid(uint256 _jobId, uint256 _agentId, uint256 _price) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Open, "Job not open");
+        require(j.auctionType == AuctionType.Bid, "Job not bid-based");
+        require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
+        require(agents[_agentId].isActive, "Agent not active");
+        require(_price > 0, "Price must be > 0");
+
+        // Require USDC transfer of 1e6 (1 USDC) as spam protection
+        require(usdc.transferFrom(msg.sender, address(this), 1e6), "USDC bid deposit failed");
+
+        uint256 len = jobBids[_jobId].length;
+        if (len > 0) {
+            uint256 leadingIdx = lowestBidIndex[_jobId];
+            Bid storage leadingBid = jobBids[_jobId][leadingIdx];
+            require(_price < leadingBid.price, "Must bid lower reward");
+
+            // Refund the previous leading bidder
+            if (!leadingBid.refunded) {
+                leadingBid.refunded = true;
+                require(usdc.transfer(leadingBid.bidder, 1e6), "Refund failed");
+            }
+            lowestBidIndex[_jobId] = len;
+        } else {
+            require(_price < j.reward, "Price must be below max cap");
+            lowestBidIndex[_jobId] = 0;
+        }
+
+        jobBids[_jobId].push(Bid({
+            agentId: _agentId,
+            price: _price,
+            bidder: msg.sender,
+            refunded: false
+        }));
+
+        emit BidSubmitted(_jobId, _agentId, _price, msg.sender);
+    }
+
+    function acceptBid(uint256 _jobId, uint256 _bidIndex) external {
+        Job storage j = jobs[_jobId];
+        require(j.status == JobStatus.Open, "Job not open");
+        require(j.poster == msg.sender, "Only poster can accept bid");
+        require(_bidIndex < jobBids[_jobId].length, "Invalid bid index");
+        require(_bidIndex == lowestBidIndex[_jobId], "Can only accept leading bid");
+
+        Bid storage b = jobBids[_jobId][_bidIndex];
+        require(!b.refunded, "Bid already refunded");
+
+        b.refunded = true;
+
+        uint256 excess = j.reward - b.price;
+        j.reward = b.price;
+        j.status = JobStatus.InProgress;
+        j.assignedAgent = b.agentId;
+
+        // Record agent exchange rate at pickup time
+        if (yieldPool != address(0)) {
+            j.agentExchangeRateAtPickup = IMockYieldPool(yieldPool).getExchangeRate(address(usdc));
+            j.stakeDepositedInPool = true;
+        }
+
+        // Refund the winner's bid deposit
+        require(usdc.transfer(b.bidder, 1e6), "Winner deposit refund failed");
+
+        if (excess > 0) {
+            // Withdraw excess from YieldPool if deposited
+            if (j.depositedInPool && yieldPool != address(0)) {
+                IMockYieldPool(yieldPool).withdraw(j.paymentToken, excess, address(this));
+                uint256 usdcEquivalent = j.paymentToken == address(usdc) ? excess : _convertToUSDC(excess);
+                if (yieldTVL >= usdcEquivalent) {
+                    yieldTVL -= usdcEquivalent;
+                }
+            }
+            // Refund the excess to the poster
+            require(IERC20(j.paymentToken).transfer(j.poster, excess), "Poster excess refund failed");
+        }
+
+        emit BidAccepted(_jobId, b.agentId, b.price);
+        emit JobPickedUp(_jobId, b.agentId);
     }
 
     function pickupJob(uint256 _jobId, uint256 _agentId, bytes calldata _capabilityProof) external {
@@ -325,6 +612,7 @@ contract JobChainV2 {
         Agent storage a = agents[_agentId];
 
         require(j.status == JobStatus.Open, "Job not open");
+        require(j.auctionType != AuctionType.Bid, "Use acceptBid for bidding jobs");
         require(identityRegistry.ownerOf(_agentId) == msg.sender, "Not agent owner");
         require(a.isActive, "Agent not active");
         require(a.stakedAmount >= MIN_STAKE, "Insufficient stake");
@@ -340,6 +628,28 @@ contract JobChainV2 {
 
         j.status = JobStatus.InProgress;
         j.assignedAgent = _agentId;
+
+        // Dynamic pricing adjustment for Dutch Auctions
+        if (j.auctionType == AuctionType.Dutch) {
+            uint256 currentReward = getCurrentReward(_jobId);
+            require(currentReward >= j.floorPrice, "Claim reward below floor");
+
+            uint256 excess = j.reward - currentReward;
+            j.reward = currentReward;
+
+            if (excess > 0) {
+                // If deposited in YieldPool, withdraw the excess first
+                if (j.depositedInPool && yieldPool != address(0)) {
+                    IMockYieldPool(yieldPool).withdraw(j.paymentToken, excess, address(this));
+                    uint256 usdcEquivalent = j.paymentToken == address(usdc) ? excess : _convertToUSDC(excess);
+                    if (yieldTVL >= usdcEquivalent) {
+                        yieldTVL -= usdcEquivalent;
+                    }
+                }
+                // Return the excess to the poster
+                require(IERC20(j.paymentToken).transfer(j.poster, excess), "Excess refund failed");
+            }
+        }
 
         // Record agent exchange rate at pickup time
         if (yieldPool != address(0)) {
@@ -378,6 +688,12 @@ contract JobChainV2 {
         require(j.poster == msg.sender, "Only poster can approve");
         require(j.status == JobStatus.Submitted, "Result not submitted");
         require(_rating >= 1 && _rating <= 5, "Rating must be 1-5");
+
+        // Verify all child jobs are completed
+        uint256[] storage children = subJobIds[_jobId];
+        for (uint256 i = 0; i < children.length; i++) {
+            require(jobs[children[i]].status == JobStatus.Completed, "Child jobs not completed");
+        }
 
         Agent storage a = agents[j.assignedAgent];
 
@@ -571,8 +887,16 @@ contract JobChainV2 {
 
         a.failedJobs++;
 
-        // Refund poster
-        require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
+        // Refund poster or return to parent reward pool
+        if (j.hasParent) {
+            Job storage parentJob = jobs[j.parentJobId];
+            parentJob.reward += j.reward;
+            if (posterShare > 0) {
+                require(IERC20(j.paymentToken).transfer(j.poster, posterShare), "Refund failed");
+            }
+        } else {
+            require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
+        }
 
         // Submit feedback to official ReputationRegistry (defensive try-catch)
         bytes32 refHash = keccak256(abi.encodePacked("failed_job_finalized", _jobId));
@@ -892,7 +1216,16 @@ contract JobChainV2 {
             protocolFees += protocolShare;
         }
 
-        require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
+        // Refund poster or return to parent reward pool
+        if (j.hasParent) {
+            Job storage parentJob = jobs[j.parentJobId];
+            parentJob.reward += j.reward;
+            if (posterShare > 0) {
+                require(IERC20(j.paymentToken).transfer(j.poster, posterShare), "Refund failed");
+            }
+        } else {
+            require(IERC20(j.paymentToken).transfer(j.poster, j.reward + posterShare), "Refund failed");
+        }
 
         emit JobCancelled(_jobId);
         emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
@@ -906,11 +1239,15 @@ contract JobChainV2 {
         address poster, string memory description, string memory requiredCapabilities,
         uint256 reward, uint256 deadline, uint256 assignedAgent,
         JobStatus status, string memory resultHash, uint8 rating, uint256 createdAt,
-        address paymentToken, uint256 failedAt
+        address paymentToken, uint256 failedAt,
+        AuctionType auctionType, uint256 startPrice, uint256 floorPrice, uint256 decayPeriod,
+        uint256 parentJobId, bool hasParent
     ) {
         Job storage j = jobs[_jobId];
         return (j.poster, j.description, j.requiredCapabilities, j.reward, j.deadline,
-                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt, j.paymentToken, j.failedAt);
+                j.assignedAgent, j.status, j.resultHash, j.rating, j.createdAt, j.paymentToken, j.failedAt,
+                j.auctionType, j.startPrice, j.floorPrice, j.decayPeriod,
+                j.parentJobId, j.hasParent);
     }
 
     function getAgent(uint256 _agentId) external view returns (
@@ -971,21 +1308,30 @@ contract JobChainV2 {
         }
     }
 
-    // ── Owner Functions ──
+    // ── Owner & DAO Functions ──
+
+    function setRevenueDistributor(address _revenueDistributor) external {
+        require(msg.sender == owner, "Only owner");
+        revenueDistributor = _revenueDistributor;
+    }
+
+    function setProtocolFeeBps(uint256 _bps) external {
+        require(msg.sender == revenueDistributor, "Only DAO distributor can call");
+        require(_bps <= 1000, "Max fee limit 10%");
+        PROTOCOL_FEE_BPS = _bps;
+    }
 
     function withdrawFees() external {
-        require(msg.sender == owner, "Only owner");
         uint256 amount = protocolFees;
         protocolFees = 0;
         protocolTokenFees[address(usdc)] = 0;
         
         _withdrawFromPool(address(usdc), amount);
 
-        require(usdc.transfer(owner, amount), "Withdraw failed");
+        require(usdc.transfer(revenueDistributor, amount), "Withdraw failed");
     }
 
     function withdrawTokenFees(address _token) external {
-        require(msg.sender == owner, "Only owner");
         uint256 amount = protocolTokenFees[_token];
         protocolTokenFees[_token] = 0;
         if (_token == address(usdc)) {
@@ -994,6 +1340,199 @@ contract JobChainV2 {
 
         _withdrawFromPool(_token, amount);
 
-        require(IERC20(_token).transfer(owner, amount), "Withdraw failed");
+        require(IERC20(_token).transfer(revenueDistributor, amount), "Withdraw failed");
+    }
+
+    // ── Recurring Schedules Implementation (Phase 13) ──
+
+    function registerSchedule(
+        string calldata _desc,
+        string calldata _requiredCapabilities,
+        uint256 _interval,
+        uint256 _reward,
+        uint256 _maxExecutions,
+        address _paymentToken
+    ) external returns (uint256) {
+        require(_interval > 0, "Interval must be > 0");
+        require(_reward > 0, "Reward must be > 0");
+        require(_maxExecutions > 0, "Max executions must be > 0");
+        require(_paymentToken == address(usdc) || _paymentToken == address(eurc), "Invalid payment token");
+
+        uint256 totalBudget = _reward * _maxExecutions;
+        require(IERC20(_paymentToken).transferFrom(msg.sender, address(this), totalBudget), "Transfer failed");
+
+        uint256 id = nextScheduleId++;
+        schedules[id] = Schedule({
+            id: id,
+            poster: msg.sender,
+            description: _desc,
+            requiredCapabilities: _requiredCapabilities,
+            reward: _reward,
+            interval: _interval,
+            nextExecution: block.timestamp, // Eligible immediately
+            fundedBalance: totalBudget,
+            maxExecutions: _maxExecutions,
+            executionsCount: 0,
+            paymentToken: _paymentToken,
+            active: true
+        });
+
+        emit ScheduleRegistered(id, msg.sender, _interval, _reward, totalBudget);
+        return id;
+    }
+
+    function executeScheduledJob(uint256 _scheduleId) external {
+        Schedule storage s = schedules[_scheduleId];
+        require(s.active, "Schedule not active");
+        require(block.timestamp >= s.nextExecution, "Not execution time yet");
+        require(s.fundedBalance >= s.reward, "Insufficient schedule balance");
+        require(s.executionsCount < s.maxExecutions, "Max executions reached");
+
+        uint256 keeperReward = (s.reward * 2) / 100; // 2% keeper incentive
+        uint256 jobReward = s.reward - keeperReward;
+
+        s.fundedBalance -= s.reward;
+        s.executionsCount++;
+        s.nextExecution = block.timestamp + s.interval;
+
+        // If no budget left or max executions reached, deactivate
+        if (s.executionsCount >= s.maxExecutions || s.fundedBalance < s.reward) {
+            s.active = false;
+        }
+
+        // Spawn Job
+        uint256 jobId = nextJobId++;
+        uint256 rate = 0;
+        bool deposited = false;
+
+        if (yieldPool != address(0)) {
+            try IERC20(s.paymentToken).approve(yieldPool, jobReward) {} catch {}
+            try IMockYieldPool(yieldPool).deposit(s.paymentToken, jobReward) returns (bool success) {
+                if (success) {
+                    rate = IMockYieldPool(yieldPool).getExchangeRate(s.paymentToken);
+                    deposited = true;
+                    uint256 usdcEquivalent = s.paymentToken == address(usdc) ? jobReward : _convertToUSDC(jobReward);
+                    yieldTVL += usdcEquivalent;
+                }
+            } catch {}
+        }
+
+        jobs[jobId] = Job({
+            poster: s.poster,
+            description: s.description,
+            requiredCapabilities: s.requiredCapabilities,
+            reward: jobReward,
+            deadline: block.timestamp + 24 hours,
+            assignedAgent: 0,
+            status: JobStatus.Open,
+            resultHash: "",
+            rating: 0,
+            createdAt: block.timestamp,
+            paymentToken: s.paymentToken,
+            failedAt: 0,
+            exchangeRateAtDeposit: rate,
+            agentExchangeRateAtPickup: 0,
+            depositedInPool: deposited,
+            stakeDepositedInPool: false,
+            auctionType: AuctionType.Fixed,
+            startPrice: jobReward,
+            floorPrice: jobReward,
+            decayPeriod: 0,
+            parentJobId: 0,
+            hasParent: false
+        });
+
+        emit JobPosted(jobId, s.poster, jobReward, s.requiredCapabilities, block.timestamp + 24 hours);
+        emit ScheduleExecuted(_scheduleId, jobId, s.executionsCount, keeperReward);
+
+        // Transfer incentive to Keeper
+        require(IERC20(s.paymentToken).transfer(msg.sender, keeperReward), "Keeper transfer failed");
+    }
+
+    function cancelSchedule(uint256 _scheduleId) external {
+        Schedule storage s = schedules[_scheduleId];
+        require(s.poster == msg.sender, "Only poster can cancel");
+        require(s.active, "Schedule not active");
+
+        // Lock checks
+        bool inExecutionWindow = (block.timestamp >= s.nextExecution && block.timestamp < s.nextExecution + 1 hours);
+        require(!inExecutionWindow, "Lock: execution window active");
+
+        s.active = false;
+        uint256 refundAmount = s.fundedBalance;
+        s.fundedBalance = 0;
+
+        if (refundAmount > 0) {
+            require(IERC20(s.paymentToken).transfer(s.poster, refundAmount), "Refund failed");
+        }
+
+        emit ScheduleCancelled(_scheduleId, refundAmount);
+    }
+
+    function replenishSchedule(uint256 _scheduleId, uint256 _amount) external {
+        Schedule storage s = schedules[_scheduleId];
+        require(s.poster == msg.sender, "Only poster can replenish");
+        require(_amount > 0, "Amount must be > 0");
+
+        // Lock checks
+        bool inExecutionWindow = (block.timestamp >= s.nextExecution && block.timestamp < s.nextExecution + 1 hours);
+        require(!inExecutionWindow, "Lock: execution window active");
+
+        require(IERC20(s.paymentToken).transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+        s.fundedBalance += _amount;
+
+        if (s.fundedBalance >= s.reward && s.executionsCount < s.maxExecutions) {
+            s.active = true;
+        }
+
+        emit ScheduleReplenished(_scheduleId, _amount);
+    }
+
+    function withdrawSchedule(uint256 _scheduleId, uint256 _amount) external {
+        Schedule storage s = schedules[_scheduleId];
+        require(s.poster == msg.sender, "Only poster can withdraw");
+        require(_amount > 0, "Amount must be > 0");
+        require(s.fundedBalance >= _amount, "Insufficient balance");
+
+        // Lock checks
+        bool inExecutionWindow = (block.timestamp >= s.nextExecution && block.timestamp < s.nextExecution + 1 hours);
+        require(!inExecutionWindow, "Lock: execution window active");
+
+        s.fundedBalance -= _amount;
+        if (s.fundedBalance < s.reward) {
+            s.active = false;
+        }
+
+        require(IERC20(s.paymentToken).transfer(s.poster, _amount), "Withdraw failed");
+        emit ScheduleWithdrawn(_scheduleId, _amount);
+    }
+
+    function getSchedule(uint256 _scheduleId) external view returns (
+        address poster,
+        string memory description,
+        string memory requiredCapabilities,
+        uint256 reward,
+        uint256 interval,
+        uint256 nextExecution,
+        uint256 fundedBalance,
+        uint256 maxExecutions,
+        uint256 executionsCount,
+        address paymentToken,
+        bool active
+    ) {
+        Schedule storage s = schedules[_scheduleId];
+        return (
+            s.poster,
+            s.description,
+            s.requiredCapabilities,
+            s.reward,
+            s.interval,
+            s.nextExecution,
+            s.fundedBalance,
+            s.maxExecutions,
+            s.executionsCount,
+            s.paymentToken,
+            s.active
+        );
     }
 }
