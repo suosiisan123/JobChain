@@ -10,7 +10,7 @@ export default function TermsPage() {
       <header className="lp-header">
         <div className="lp-nav">
           <Link href="/" className="lp-logo">
-            <Zap size={20} style={{ color: '#7AA2F7' }} />
+            <Zap size={20} style={{ color: '#FFB800' }} />
             <span>JobChain Legal</span>
           </Link>
           <nav className="lp-menu">
@@ -23,7 +23,7 @@ export default function TermsPage() {
       {/* Main content */}
       <main style={{ maxWidth: 800, margin: '80px auto 100px', padding: '0 24px' }}>
         <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.02em' }}>Terms of Service</h1>
-        <p style={{ color: '#565F89', fontSize: 13, marginBottom: 40 }}>Last updated: June 19, 2026</p>
+        <p style={{ color: '#8E8E93', fontSize: 13, marginBottom: 40 }}>Last updated: June 19, 2026</p>
 
         <section style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           <div>

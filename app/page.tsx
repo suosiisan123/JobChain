@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { 
-  Terminal, Users, Briefcase, Shield, Zap, Scale, Clock, BookOpen, 
-  ArrowRight, Check, Search, Menu, X, Mail, Github, ExternalLink, HelpCircle
+  Terminal as TerminalIcon, Users, Briefcase, Shield, Zap, 
+  ArrowRight, Search, Menu, Mail, HelpCircle
 } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 
@@ -127,7 +127,7 @@ export default function LandingPage() {
       <header className="lp-header">
         <div className="lp-nav">
           <Link href="/" className="lp-logo">
-            <Zap size={20} style={{ color: '#7AA2F7' }} />
+            <Zap size={20} style={{ color: '#FFB800' }} />
             <span>JobChain</span>
           </Link>
 
@@ -178,11 +178,11 @@ export default function LandingPage() {
         <div className="lp-preview">
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#F7768E' }} />
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#E0AF68' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFB800' }} />
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ECE6A' }} />
-            <span style={{ fontSize: 11, color: '#565F89', fontFamily: 'monospace', marginLeft: 12 }}>terminal@jobchain-agent-registry: ~</span>
+            <span style={{ fontSize: 11, color: '#8E8E93', fontFamily: 'monospace', marginLeft: 12 }}>terminal@jobchain-agent-registry: ~</span>
           </div>
-          <pre style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: 13, color: '#7AA2F7', overflowX: 'auto', padding: '12px 0' }}>
+          <pre style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: 13, color: '#FFB800', overflowX: 'auto', padding: '12px 0' }}>
 {`$ jobchain register --agent "AutoGPT-Finance" --stake 50.00 USDC
 [INFO] Fetched credentials from WebAuthn Biometric Passkey...
 [SUCCESS] ERC-8004 Identity registered at 0x8004A818BFB912233c491871b3d84c89A494BD9e
@@ -235,20 +235,20 @@ $ jobchain claim-job --id 4022 --agent-id 12
 
       {/* Trust Stack section */}
       <section className="lp-section" style={{ background: 'rgba(255,255,255,0.01)', textAlign: 'center' }}>
-        <h3 style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#565F89', marginBottom: 24 }}>
+        <h3 style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#8E8E93', marginBottom: 24 }}>
           POWERED BY WORLD-CLASS WEB3 INFRASTRUCTURE
         </h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 40, justifyContent: 'center', alignItems: 'center', opacity: 0.6 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#F4F4F5', display: 'flex', alignItems: 'center', gap: 6 }}>
             🟢 Circle SDK
           </span>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#F4F4F5', display: 'flex', alignItems: 'center', gap: 6 }}>
             ⚡ Arc Chain
           </span>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#F4F4F5', display: 'flex', alignItems: 'center', gap: 6 }}>
             ▲ Next.js
           </span>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#F4F4F5', display: 'flex', alignItems: 'center', gap: 6 }}>
             ⚓ Wagmi & Ethers
           </span>
         </div>
@@ -256,7 +256,7 @@ $ jobchain claim-job --id 4022 --agent-id 12
 
       {/* Waitlist Form */}
       <section className="lp-section" style={{ textAlign: 'center' }}>
-        <div style={{ maxWidth: 640, margin: '0 auto', padding: '60px 40px', background: 'radial-gradient(circle, rgba(122,162,247,0.05) 0%, transparent 100%)', borderRadius: 24, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ maxWidth: 640, margin: '0 auto', padding: '60px 40px', background: 'radial-gradient(circle, rgba(255,184,0,0.05) 0%, transparent 100%)', borderRadius: 24, border: '1px solid rgba(255,255,255,0.06)' }}>
           <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>Join the Developer Waitlist</h2>
           <p style={{ color: '#A3A3A3', marginBottom: 32, fontSize: 15 }}>
             Get notified when we launch our mainnet SDK adapters and release developer templates.
@@ -287,7 +287,7 @@ $ jobchain claim-job --id 4022 --agent-id 12
 
         {/* FAQ Search Bar */}
         <div style={{ maxWidth: 720, margin: '0 auto 40px', position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#565F89' }} />
+          <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#8E8E93' }} />
           <input 
             type="text" 
             placeholder="Search FAQs..." 
@@ -305,7 +305,7 @@ $ jobchain claim-job --id 4022 --agent-id 12
               <div key={i} className="lp-faq-item">
                 <div className="lp-faq-question" onClick={() => setOpenFaqIndex(isOpen ? null : i)}>
                   <span>{faq.q}</span>
-                  <HelpCircle size={16} style={{ color: isOpen ? '#7AA2F7' : '#565F89', transition: 'transform 0.2s' }} />
+                  <HelpCircle size={16} style={{ color: isOpen ? '#FFB800' : '#8E8E93', transition: 'transform 0.2s' }} />
                 </div>
                 {isOpen && (
                   <div className="lp-faq-answer">
@@ -316,7 +316,7 @@ $ jobchain claim-job --id 4022 --agent-id 12
             )
           })}
           {filteredFaqs.length === 0 && (
-            <p style={{ textAlign: 'center', color: '#565F89' }}>No matching questions found.</p>
+            <p style={{ textAlign: 'center', color: '#8E8E93' }}>No matching questions found.</p>
           )}
         </div>
       </section>
@@ -373,7 +373,7 @@ $ jobchain claim-job --id 4022 --agent-id 12
         <div className="lp-footer-content">
           <div className="lp-footer-brand">
             <Link href="/" className="lp-logo">
-              <Zap size={20} style={{ color: '#7AA2F7' }} />
+              <Zap size={20} style={{ color: '#FFB800' }} />
               <span>JobChain</span>
             </Link>
             <p className="lp-footer-text">

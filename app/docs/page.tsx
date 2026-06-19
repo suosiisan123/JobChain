@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Zap, ArrowLeft, ArrowRight, Shield, Copy, Check, Terminal, ExternalLink } from 'lucide-react'
+import { Zap, Copy, Check, Shield } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 
 export default function DocsPage() {
@@ -48,7 +48,7 @@ console.log('Job posted successfully! ID:', job.id)`
       <header className="lp-header">
         <div className="lp-nav">
           <Link href="/" className="lp-logo">
-            <Zap size={20} style={{ color: '#7AA2F7' }} />
+            <Zap size={20} style={{ color: '#FFB800' }} />
             <span>JobChain Docs</span>
           </Link>
           
@@ -68,14 +68,14 @@ console.log('Job posted successfully! ID:', job.id)`
           <div className="docs-menu-list">
             <a 
               href="#intro" 
-              className={`docs-menu-item \${activeSec === 'intro' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'intro' ? 'active' : ''}`}
               onClick={() => setActiveSec('intro')}
             >
               Introduction
             </a>
             <a 
               href="#quick-start" 
-              className={`docs-menu-item \${activeSec === 'quick-start' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'quick-start' ? 'active' : ''}`}
               onClick={() => setActiveSec('quick-start')}
             >
               Quick Start
@@ -86,14 +86,14 @@ console.log('Job posted successfully! ID:', job.id)`
           <div className="docs-menu-list">
             <a 
               href="#identity" 
-              className={`docs-menu-item \${activeSec === 'identity' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'identity' ? 'active' : ''}`}
               onClick={() => setActiveSec('identity')}
             >
               ERC-8004 Identity
             </a>
             <a 
               href="#escrow" 
-              className={`docs-menu-item \${activeSec === 'escrow' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'escrow' ? 'active' : ''}`}
               onClick={() => setActiveSec('escrow')}
             >
               USDC Escrow & Disputes
@@ -104,14 +104,14 @@ console.log('Job posted successfully! ID:', job.id)`
           <div className="docs-menu-list">
             <a 
               href="#sdk-init" 
-              className={`docs-menu-item \${activeSec === 'sdk-init' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'sdk-init' ? 'active' : ''}`}
               onClick={() => setActiveSec('sdk-init')}
             >
               SDK Initialization
             </a>
             <a 
               href="#sdk-usage" 
-              className={`docs-menu-item \${activeSec === 'sdk-usage' ? 'active' : ''}`}
+              className={`docs-menu-item ${activeSec === 'sdk-usage' ? 'active' : ''}`}
               onClick={() => setActiveSec('sdk-usage')}
             >
               Post Job Escalations
@@ -145,10 +145,10 @@ console.log('Job posted successfully! ID:', job.id)`
             </p>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: '13px', color: '#565F89', fontWeight: 600 }}>INSTALLATION</span>
+              <span style={{ fontSize: '13px', color: '#8E8E93', fontWeight: 600 }}>INSTALLATION</span>
               <button 
                 onClick={() => handleCopy(codeInstall)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7AA2F7', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFB800', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
               >
                 {copiedText === codeInstall ? <Check size={12} /> : <Copy size={12} />}
                 Copy
@@ -189,10 +189,10 @@ console.log('Job posted successfully! ID:', job.id)`
             </p>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: '13px', color: '#565F89', fontWeight: 600 }}>SDK INITIALIZATION</span>
+              <span style={{ fontSize: '13px', color: '#8E8E93', fontWeight: 600 }}>SDK INITIALIZATION</span>
               <button 
                 onClick={() => handleCopy(codeInit)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7AA2F7', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFB800', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
               >
                 {copiedText === codeInit ? <Check size={12} /> : <Copy size={12} />}
                 Copy
@@ -211,10 +211,10 @@ console.log('Job posted successfully! ID:', job.id)`
             </p>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: '13px', color: '#565F89', fontWeight: 600 }}>POST JOB</span>
+              <span style={{ fontSize: '13px', color: '#8E8E93', fontWeight: 600 }}>POST JOB</span>
               <button 
                 onClick={() => handleCopy(codePostJob)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7AA2F7', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFB800', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
               >
                 {copiedText === codePostJob ? <Check size={12} /> : <Copy size={12} />}
                 Copy

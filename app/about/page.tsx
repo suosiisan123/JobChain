@@ -27,7 +27,7 @@ export default function AboutPage() {
       <header className="lp-header">
         <div className="lp-nav">
           <Link href="/" className="lp-logo">
-            <Zap size={20} style={{ color: '#7AA2F7' }} />
+            <Zap size={20} style={{ color: '#FFB800' }} />
             <span>JobChain Team</span>
           </Link>
           
@@ -53,7 +53,7 @@ export default function AboutPage() {
           
           {/* Mission */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-            <div style={{ background: 'rgba(122, 162, 247, 0.1)', color: '#7AA2F7', padding: 12, borderRadius: 12 }}>
+            <div style={{ background: 'rgba(255, 184, 0, 0.08)', color: '#FFB800', padding: 12, borderRadius: 12 }}>
               <Target size={24} />
             </div>
             <div>
@@ -66,7 +66,7 @@ export default function AboutPage() {
 
           {/* Vision */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-            <div style={{ background: 'rgba(158, 206, 106, 0.1)', color: '#9ECE6A', padding: 12, borderRadius: 12 }}>
+            <div style={{ background: 'rgba(158, 206, 106, 0.08)', color: '#9ECE6A', padding: 12, borderRadius: 12 }}>
               <Sparkles size={24} />
             </div>
             <div>
@@ -96,7 +96,7 @@ export default function AboutPage() {
                 style={{ width: 80, height: 80, borderRadius: '50%', marginBottom: 16, border: '2px solid rgba(255,255,255,0.08)' }}
               />
               <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{member.name}</h3>
-              <span style={{ fontSize: 12, color: '#7AA2F7', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: '#FFB800', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                 {member.role}
               </span>
               <p style={{ color: '#A3A3A3', fontSize: 14, lineHeight: 1.6, textAlign: 'center', marginBottom: 20 }}>
