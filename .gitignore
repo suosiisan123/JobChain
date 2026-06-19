@@ -23,7 +23,7 @@ node_modules/
 .eslintcache
 .turbo/
 lib/agent-wallets-db.json
-
+lib/user-wallets-db.json
 
 # Editor & OS Files
 .vscode/*
@@ -45,6 +45,8 @@ out/
 .vercel/
 *.tsbuildinfo
 next-env.d.ts
+deploy_output.txt
+scripts/setup-circle.js
 
 # Hardhat
 artifacts/
