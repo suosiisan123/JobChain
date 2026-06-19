@@ -30,13 +30,7 @@ export async function POST(req: Request) {
     }
 
     if (!hasCircleConfig || !circleClient) {
-      console.warn('[Circle Wallet] CIRCLE config is missing. Simulating contract execution.')
-      const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-      return NextResponse.json({
-        simulated: true,
-        txHash: mockTxHash,
-        message: `Simulated transaction ${functionName} for agent #${agentIdStr}`
-      })
+      return NextResponse.json({ error: 'Circle API credentials or Wallet Set ID missing in server environment config' }, { status: 500 })
     }
 
     const response = await circleClient.createContractExecutionTransaction({

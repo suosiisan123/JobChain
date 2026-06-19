@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gatewayDb } from '@/lib/gateway-db'
+import { circleClient, hasCircleConfig } from '@/lib/circle-client'
+import { getAllAgentWallets } from '@/lib/agent-wallets-db'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -42,8 +44,53 @@ export async function POST(req: NextRequest) {
       if (currentEarnings < numAmount) {
         return NextResponse.json({ error: 'Insufficient earnings balance' }, { status: 400 })
       }
+      
+      let txHash = ''
+      if (hasCircleConfig && circleClient) {
+        try {
+          const agentWallets = getAllAgentWallets()
+          let agentWalletId = ''
+          for (const agentId of Object.keys(agentWallets)) {
+            agentWalletId = agentWallets[agentId].walletId
+            break
+          }
+
+          if (agentWalletId) {
+            const transferResponse = await circleClient.createTransaction({
+              walletId: agentWalletId,
+              tokenAddress: '0x3600000000000000000000000000000000000000', // USDC on Arc Testnet
+              destinationAddress: address,
+              amount: [numAmount.toFixed(6)],
+              fee: {
+                type: 'level',
+                config: { feeLevel: 'MEDIUM' }
+              }
+            })
+            const txId = transferResponse.data?.id
+            if (txId) {
+              let attempts = 0
+              while (attempts < 10) {
+                const txStatus = await circleClient.getTransaction({ id: txId })
+                if (txStatus.data?.transaction?.txHash) {
+                  txHash = txStatus.data.transaction.txHash
+                  break
+                }
+                attempts++
+                await new Promise(r => setTimeout(r, 1000))
+              }
+            }
+          }
+        } catch (err: any) {
+          console.error('[x402] On-chain earnings payout failed/skipped:', err.message)
+        }
+      }
+
       const nextBal = gatewayDb.adjustAgentBalance(address, -numAmount)
-      return NextResponse.json({ message: 'Earnings withdrawal successful', balance: nextBal })
+      return NextResponse.json({ 
+        message: 'Earnings withdrawal successful', 
+        balance: nextBal, 
+        txHash: txHash || undefined 
+      })
     }
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })

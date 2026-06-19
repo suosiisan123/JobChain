@@ -15,26 +15,13 @@ export async function POST(req: Request) {
     const existing = getAgentWallet(agentIdStr)
     if (existing) {
       return NextResponse.json({
-        simulated: !hasCircleConfig,
+        simulated: false,
         wallet: existing
       })
     }
 
     if (!hasCircleConfig || !circleClient) {
-      console.warn('[Circle Wallet] CIRCLE credentials or Wallet Set ID missing. Running in Simulation mode.')
-      // Generate simulated mock address
-      const simulatedAddress = `0x${Array.from({ length: 40 }, (_, i) => ((i + parseInt(agentIdStr)) % 16).toString(16)).join('')}`
-      const walletInfo = {
-        walletId: `sim_wallet_${agentIdStr}`,
-        address: simulatedAddress,
-        blockchain: 'ARC-TESTNET',
-        createdAt: new Date().toISOString()
-      }
-      saveAgentWallet(agentIdStr, walletInfo)
-      return NextResponse.json({
-        simulated: true,
-        wallet: walletInfo
-      })
+      return NextResponse.json({ error: 'Circle API credentials or Wallet Set ID missing in server environment config' }, { status: 500 })
     }
 
     // Call Circle API to create wallet

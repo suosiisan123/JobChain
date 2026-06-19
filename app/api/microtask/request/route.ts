@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid PAYMENT-SIGNATURE encoding' }, { status: 400 })
     }
 
-    const { buyer, receiver, amount, nonce, signature } = receipt
-    if (!buyer || !receiver || !amount || !nonce || !signature) {
+    const { buyer, receiver, amount, nonce, signature, sessionAddress, authSignature } = receipt
+    if (!buyer || !receiver || !amount || !nonce || !signature || !sessionAddress || !authSignature) {
       return NextResponse.json({ error: 'Malformed PAYMENT-SIGNATURE payload' }, { status: 400 })
     }
 
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ buyer, receiver, amount: numericAmount, nonce, signature })
+      body: JSON.stringify({ buyer, receiver, amount: numericAmount, nonce, signature, sessionAddress, authSignature })
     })
 
     const settleData = await settleRes.json()
