@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const DB_DIR = path.join(process.cwd(), '.gemini')
+const DB_DIR = path.join(process.cwd(), 'cache')
 const DB_FILE = path.join(DB_DIR, 'gateway_db.json')
 
 export interface GatewayDeposit {
