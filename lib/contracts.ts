@@ -662,7 +662,7 @@ export const messageTransmitterAbi = [
 // ═══════════════════════════════════════════════════════════════
 // Circle Gateway Nanopayments Config
 // ═══════════════════════════════════════════════════════════════
-export const GATEWAY_VAULT_ADDRESS = "0x80041234567890abcdef1234567890abcdef1234" as `0x${string}`;
+export const GATEWAY_VAULT_ADDRESS = "0x88aa490CC64Ba7DB81e88a5527c0C32Ca71Ec971" as `0x${string}`;
 
 export const gatewayVaultAbi = [
   {

@@ -12,7 +12,7 @@ async function main() {
 
   console.log("Deploying MockYieldPool...");
   const MockYieldPool = await ethers.getContractFactory("MockYieldPool");
-  const mockYieldPool = await MockYieldPool.deploy(USDC_ARC);
+  const mockYieldPool = await MockYieldPool.deploy();
   await mockYieldPool.waitForDeployment();
   const poolAddress = await mockYieldPool.getAddress();
   console.log("MockYieldPool deployed to:", poolAddress);

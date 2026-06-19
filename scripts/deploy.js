@@ -25,7 +25,7 @@ async function main() {
   const poolArtifactPath = path.join(__dirname, "../artifacts/contracts/MockYieldPool.sol/MockYieldPool.json");
   const poolArtifact = JSON.parse(fs.readFileSync(poolArtifactPath, "utf8"));
   const poolFactory = new ethers.ContractFactory(poolArtifact.abi, poolArtifact.bytecode, wallet);
-  const mockPool = await poolFactory.deploy(USDC_ARC);
+  const mockPool = await poolFactory.deploy();
   await mockPool.waitForDeployment();
   const poolAddress = await mockPool.getAddress();
   console.log(`MockYieldPool deployed to: ${poolAddress}`);

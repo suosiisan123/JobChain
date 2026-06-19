@@ -8,8 +8,21 @@ module.exports = {
   solidity: {
     version: "0.8.24",
     settings: {
-      optimizer: { enabled: true, runs: 200 },
+      optimizer: {
+        enabled: true,
+        runs: 1,
+        details: {
+          yul: true,
+          yulDetails: {
+            stackAllocation: true,
+          }
+        }
+      },
       viaIR: true,
+      evmVersion: "cancun",
+      metadata: {
+        bytecodeHash: "none",
+      },
     },
   },
   networks: {
