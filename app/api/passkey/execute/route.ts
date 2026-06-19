@@ -29,68 +29,66 @@ export async function POST(req: Request) {
     let txHash = ''
     let challengeId = ''
 
-    if (!hasCircleConfig) {
-      // Simulation mode: generate mock transaction hash and store it locally
-      txHash = `0x${crypto.randomBytes(32).toString('hex')}`
-      addTxToHistory(emailStr, txHash, functionName || 'execute')
-      if (isSponsored) {
-        console.log(`[Circle Modular Wallet - Sponsored] Transaction ${functionName} sponsored via Paymaster: ${paymasterUrl || 'Circle Paymaster'}`)
-      } else {
-        console.log(`[Circle Modular Wallet - Self-Paid] Simulated transaction executed for ${emailStr}: ${txHash}`)
-      }
-    } else {
-      if (!wallet.walletId) {
-        return NextResponse.json({ error: 'User walletId is missing' }, { status: 400 })
-      }
-      // Real Mode: Call Circle's Developer Controlled Wallets API for the user's SCA execution
-      const response = await circleClient!.createContractExecutionTransaction({
-        walletId: wallet.walletId,
-        contractAddress: String(contractAddress),
-        abiFunctionSignature: String(abiFunctionSignature),
-        abiParameters: abiParameters ? (abiParameters as any[]).map(String) : [],
-        fee: {
-          type: 'level',
-          config: {
-            feeLevel: 'MEDIUM'
-          }
-        }
-      })
+    if (!hasCircleConfig || !circleClient) {
+      return NextResponse.json({ error: 'Circle API credentials or Wallet Set ID missing in server environment config' }, { status: 500 })
+    }
 
-      const txId = response.data?.id
-      if (txId) {
-        let attempts = 0
-        const maxAttempts = 15
-        const delayMs = 1000
+    if (!wallet.walletId) {
+      return NextResponse.json({ error: 'User walletId is missing' }, { status: 400 })
+    }
 
-        while (attempts < maxAttempts) {
-          try {
-            const txStatus = await circleClient!.getTransaction({ id: txId })
-            const txObj = txStatus.data?.transaction
-            if (txObj?.txHash) {
-              txHash = txObj.txHash
-              break
-            }
-            if (txObj?.state === 'FAILED' || txObj?.state === 'CANCELLED' || txObj?.state === 'DENIED') {
-              break
-            }
-          } catch (pollErr) {
-            console.warn(`Polling user transaction hash failed (attempt ${attempts + 1}):`, pollErr)
-          }
-          attempts++
-          if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, delayMs))
-          }
+    // Real Mode: Call Circle's Developer Controlled Wallets API for the user's SCA execution
+    const response = await circleClient.createContractExecutionTransaction({
+      walletId: wallet.walletId,
+      contractAddress: String(contractAddress),
+      abiFunctionSignature: String(abiFunctionSignature),
+      abiParameters: abiParameters ? (abiParameters as any[]).map(String) : [],
+      fee: {
+        type: 'level',
+        config: {
+          feeLevel: 'MEDIUM'
         }
       }
+    })
 
-      addTxToHistory(emailStr, txHash || `tx_pending_${txId}`, functionName || 'execute')
-      if (isSponsored) {
-        console.log(`[Circle Developer Console] Routing transaction through Paymaster RPC: ${paymasterUrl}`)
+    const txId = response.data?.id
+    if (txId) {
+      let attempts = 0
+      const maxAttempts = 15
+      const delayMs = 1000
+
+      while (attempts < maxAttempts) {
+        try {
+          const txStatus = await circleClient.getTransaction({ id: txId })
+          const txObj = txStatus.data?.transaction
+          if (txObj?.txHash) {
+            txHash = txObj.txHash
+            break
+          }
+          if (txObj?.state === 'FAILED' || txObj?.state === 'CANCELLED' || txObj?.state === 'DENIED') {
+            break
+          }
+        } catch (pollErr) {
+          console.warn(`Polling user transaction hash failed (attempt ${attempts + 1}):`, pollErr)
+        }
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+        }
       }
     }
 
+    if (!txHash) {
+      throw new Error(`Transaction execution failed or timed out: ${txId}`)
+    }
+
+    addTxToHistory(emailStr, txHash, functionName || 'execute')
+    if (isSponsored) {
+      console.log(`[Circle Developer Console] Routing transaction through Paymaster RPC: ${paymasterUrl}`)
+    }
+
     return NextResponse.json({
-      simulated: !hasCircleConfig,
+      simulated: false,
       txHash,
       challengeId,
       isSponsored: !!isSponsored,

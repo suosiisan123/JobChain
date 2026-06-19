@@ -23,24 +23,22 @@ export async function POST(req: Request) {
       let generatedAddress = ''
       let walletId = ''
 
-      if (hasCircleConfig && circleClient) {
-        const response = await circleClient.createWallets({
-          blockchains: ['ARC-TESTNET'],
-          count: 1,
-          walletSetId: WALLET_SET_ID,
-          accountType: 'SCA'
-        })
-        const wallet = response.data?.wallets?.[0]
-        if (!wallet) {
-          throw new Error('Failed to create user smart wallet on Circle')
-        }
-        generatedAddress = wallet.address
-        walletId = wallet.id
-      } else {
-        const emailHash = crypto.createHash('sha256').update(emailStr).digest('hex')
-        generatedAddress = `0x${emailHash.substring(0, 40)}`
-        walletId = `sca_wallet_${emailHash.substring(0, 8)}`
+      if (!hasCircleConfig || !circleClient) {
+        throw new Error('Circle API credentials or Wallet Set ID missing in server environment config')
       }
+
+      const response = await circleClient.createWallets({
+        blockchains: ['ARC-TESTNET'],
+        count: 1,
+        walletSetId: WALLET_SET_ID,
+        accountType: 'SCA'
+      })
+      const wallet = response.data?.wallets?.[0]
+      if (!wallet) {
+        throw new Error('Failed to create user smart wallet on Circle')
+      }
+      generatedAddress = wallet.address
+      walletId = wallet.id
 
       walletInfo = {
         email: emailStr,
@@ -55,7 +53,7 @@ export async function POST(req: Request) {
       saveUserWallet(emailStr, walletInfo)
 
       return NextResponse.json({
-        simulated: !hasCircleConfig,
+        simulated: false,
         walletAddress: walletInfo.walletAddress,
         message: `User ${emailStr} successfully registered`
       })
@@ -70,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
-      simulated: !hasCircleConfig,
+      simulated: false,
       walletAddress: walletInfo.walletAddress,
       message: `User ${emailStr} successfully authenticated via Passkey`
     })
