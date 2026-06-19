@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, Scale } from 'lucide-react'
+import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, Scale, Brain, Activity } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBalance } from 'wagmi'
 import { Toaster } from 'react-hot-toast'
@@ -16,12 +16,16 @@ import { MicroStreamTab } from '@/components/MicroStreamTab'
 import { SchedulerTab } from '@/components/SchedulerTab'
 import { DocsTab } from '@/components/DocsTab'
 import { GovernanceTab } from '@/components/GovernanceTab'
+import { AgentStudioTab } from '@/components/AgentStudioTab'
+import { BatchDecoderTab } from '@/components/BatchDecoderTab'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
 import { Clock, BookOpen, Vote } from 'lucide-react'
 
 const TABS = [
   { id: 'terminal', label: '~/live-events', icon: Terminal },
   { id: 'identity', label: 'erc-8004', icon: Shield },
+  { id: 'agentstudio', label: 'agent-studio', icon: Brain },
+  { id: 'batchdecoder', label: 'batch-decoder', icon: Activity },
   { id: 'agents', label: 'agent-registry', icon: Users },
   { id: 'jobs', label: 'job-queue', icon: Briefcase },
   { id: 'disputes', label: 'dispute-center', icon: Scale },
@@ -250,6 +254,8 @@ export default function JobChainApp() {
           <div className="warp-main">
             {activeTab === 'terminal' && <TerminalTab />}
             {activeTab === 'identity' && <IdentityTab />}
+            {activeTab === 'agentstudio' && <AgentStudioTab />}
+            {activeTab === 'batchdecoder' && <BatchDecoderTab />}
             {activeTab === 'agents' && <AgentsTab />}
             {activeTab === 'jobs' && <JobsTab />}
             {activeTab === 'disputes' && <DisputesTab />}
