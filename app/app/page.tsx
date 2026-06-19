@@ -65,15 +65,15 @@ export default function JobChainApp() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#24283B',
-            color: '#C0CAF5',
-            border: '1px solid #414868',
+            background: '#161619',
+            color: '#F4F4F5',
+            border: '1px solid rgba(255,255,255,0.08)',
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: '12px',
             borderRadius: '8px',
           },
-          success: { iconTheme: { primary: '#9ECE6A', secondary: '#1A1B26' } },
-          error: { iconTheme: { primary: '#F7768E', secondary: '#1A1B26' } },
+          success: { iconTheme: { primary: '#FFB800', secondary: '#0A0A0C' } },
+          error: { iconTheme: { primary: '#F7768E', secondary: '#0A0A0C' } },
         }}
       />
 
@@ -85,7 +85,9 @@ export default function JobChainApp() {
             <div className="mac-btn min" />
             <div className="mac-btn max" />
           </div>
-          <div className="warp-tabs">
+          
+          {/* Desktop Navigation */}
+          <div className="warp-tabs desktop-only">
             {TABS.map(tab => (
               <div
                 key={tab.id}
@@ -96,6 +98,52 @@ export default function JobChainApp() {
                 {tab.label}
               </div>
             ))}
+          </div>
+
+          {/* Mobile Selector Dropdown */}
+          <div className="mobile-only mobile-tab-selector-container">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as TabId)}
+              className="mobile-tab-select"
+            >
+              {TABS.map(tab => (
+                <option key={tab.id} value={tab.id}>
+                  {tab.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Mobile Status Bar */}
+        <div className="mobile-only mobile-status-bar">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '10px' }}>
+            <span style={{ fontSize: 11, color: 'var(--warp-muted)', whiteSpace: 'nowrap' }}>
+              Arc Testnet
+            </span>
+            {isConnected && balance && (
+              <span style={{ fontSize: 11, fontWeight: 'bold', color: 'var(--warp-primary)', whiteSpace: 'nowrap' }}>
+                {parseFloat(balance.formatted).toFixed(4)} USDC
+              </span>
+            )}
+            <ConnectButton.Custom>
+              {({ account, openConnectModal, openAccountModal, mounted }) => {
+                if (!mounted) return null
+                if (!account) {
+                  return (
+                    <button className="warp-btn" onClick={openConnectModal} style={{ padding: '4px 10px', fontSize: 10, marginTop: 0 }}>
+                      Connect EOA
+                    </button>
+                  )
+                }
+                return (
+                  <button className="warp-btn secondary" onClick={openAccountModal} style={{ padding: '4px 10px', fontSize: 10, marginTop: 0, whiteSpace: 'nowrap' }}>
+                    {account.displayName}
+                  </button>
+                )
+              }}
+            </ConnectButton.Custom>
           </div>
         </div>
 
@@ -153,7 +201,7 @@ export default function JobChainApp() {
                   <div
                     className="sidebar-item active"
                     onClick={() => setActiveTab('passkey')}
-                    style={{ cursor: 'pointer', background: 'rgba(122, 162, 247, 0.1)', borderColor: 'rgba(122, 162, 247, 0.3)' }}
+                    style={{ cursor: 'pointer', background: 'rgba(255, 184, 0, 0.08)', borderColor: 'rgba(255, 184, 0, 0.2)' }}
                   >
                     <Fingerprint size={12} style={{ color: 'var(--warp-cyan)', marginRight: 6 }} />
                     <span style={{ color: 'var(--warp-cyan)', fontSize: 11, fontFamily: 'monospace' }}>

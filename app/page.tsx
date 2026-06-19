@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { 
   Terminal as TerminalIcon, Users, Briefcase, Shield, Zap, 
-  ArrowRight, Search, Menu, Mail, HelpCircle
+  ArrowRight, Search, Menu, Mail, HelpCircle, X 
 } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 
@@ -144,11 +144,29 @@ export default function LandingPage() {
             </Link>
           </nav>
 
-          <button className="lp-link" style={{ display: 'none', border: 'none', background: 'none', cursor: 'pointer' }} onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            <Menu size={24} />
+          <button className="lp-burger-btn lp-link" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
       </header>
+
+      {/* Mobile Menu Panel */}
+      {mobileMenuOpen && (
+        <div className="lp-mobile-menu">
+          <nav className="lp-mobile-links">
+            <a href="#features" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a href="#how-it-works" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
+            <Link href="/docs" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>Documentation</Link>
+            <a href="#faq" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
+            <a href="#support" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>Support</a>
+            <Link href="/about" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>About Team</Link>
+            <Link href="/app" className="lp-btn" style={{ justifyContent: 'center', marginTop: 12 }} onClick={() => setMobileMenuOpen(false)}>
+              Launch App
+              <ArrowRight size={14} />
+            </Link>
+          </nav>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="lp-hero">

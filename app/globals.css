@@ -733,3 +733,108 @@ body {
   .lp-footer-content { grid-template-columns: 1fr; }
   .support-form { padding: 24px; }
 }
+
+/* ──────────────────────────────────────────────────────────
+   RESPONSIVE UTILITIES & BUG FIXES
+   ────────────────────────────────────────────────────────── */
+
+/* Desktop & Mobile Toggles */
+.desktop-only { display: flex !important; }
+.mobile-only { display: none !important; }
+
+/* Burger button styles */
+.lp-burger-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--warp-text);
+  cursor: pointer;
+  padding: 8px;
+}
+
+/* Mobile dropdown panel overlay */
+.lp-mobile-menu {
+  background: var(--warp-bg);
+  border-bottom: 1px solid var(--warp-border);
+  padding: 24px;
+  animation: slideDown 0.25s ease-out;
+}
+
+.lp-mobile-links {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lp-mobile-link {
+  color: var(--warp-muted);
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 500;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: color 0.2s;
+}
+
+.lp-mobile-link:hover {
+  color: var(--warp-primary);
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: block !important; }
+
+  /* Override hardcoded left margin offsets that push items offscreen on mobile */
+  .form-grid, .stats-grid, .integration-grid, .output-log, .terminal-output, [style*="marginLeft: 24"], [style*="marginLeft: 24px"] {
+    margin-left: 0 !important;
+  }
+
+  .mobile-tab-selector-container {
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .mobile-tab-select {
+    width: 100%;
+    background: var(--warp-bg);
+    color: var(--warp-primary);
+    border: 1px solid var(--warp-border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: var(--warp-font);
+    font-size: 13px;
+    font-weight: 700;
+    outline: none;
+    cursor: pointer;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .mobile-status-bar {
+    background: var(--warp-panel);
+    border-bottom: 1px solid var(--warp-border);
+    padding: 8px 16px;
+    display: flex !important;
+    align-items: center;
+  }
+  
+  /* Support tables overflow handling */
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .lp-burger-btn {
+    display: block !important;
+  }
+}
