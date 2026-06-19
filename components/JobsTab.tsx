@@ -97,7 +97,6 @@ export function JobsTab() {
 
   // CCTP Bridge configurations
   const [selectedChainId, setSelectedChainId] = useState<number>(5042002) // default Arc Testnet Direct
-  const [isSimulated, setIsSimulated] = useState(false)
   const { bridgeState, startBridgeAndEscrow, resetBridge } = useCCTP()
   const selectedChain = CCTP_CHAINS.find(c => c.id === selectedChainId)
 
@@ -250,8 +249,7 @@ export function JobsTab() {
         amount: reward,
         description: desc,
         requiredCapabilities: skills,
-        deadlineHours,
-        isSimulated
+        deadlineHours
       })
     }
   }
@@ -583,18 +581,6 @@ export function JobsTab() {
                 <span style={{ color: 'var(--warp-text)', fontWeight: 500 }}>
                   {sourceBalance} USDC
                 </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid #1F2335', paddingTop: 8 }}>
-                <input
-                  type="checkbox"
-                  id="simToggle"
-                  checked={isSimulated}
-                  onChange={(e) => setIsSimulated(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <label htmlFor="simToggle" style={{ fontSize: 10, color: 'var(--warp-warning)', cursor: 'pointer', fontWeight: 500 }}>
-                  Use Sandbox Attestation Simulator
-                </label>
               </div>
             </div>
           )}

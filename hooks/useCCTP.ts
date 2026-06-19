@@ -137,9 +137,8 @@ export function useCCTP() {
     description: string
     requiredCapabilities: string
     deadlineHours: string
-    isSimulated?: boolean
   }) => {
-    const { sourceChainId, amount, description, requiredCapabilities, deadlineHours, isSimulated = true } = params
+    const { sourceChainId, amount, description, requiredCapabilities, deadlineHours } = params
     const chainConfig = CCTP_CHAINS.find(c => c.id === sourceChainId)
     if (!chainConfig) {
       toast.error('Unsupported source chain selected')
@@ -161,221 +160,142 @@ export function useCCTP() {
       error: undefined
     })
 
-    if (isSimulated) {
-      // ═══════════════════════════════════════════════════════════════
-      // SIMULATED BRIDGING WORKFLOW
-      // Provides beautiful UI states without chain switching/finality lags
-      // ═══════════════════════════════════════════════════════════════
-      try {
-        // Step 1: Approving USDC
-        await new Promise(r => setTimeout(r, 2000))
-        updateBridgeState({ step: 'APPROVED' })
+    // ═══════════════════════════════════════════════════════════════
+    // REAL CCTP BRIDGING WORKFLOW
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      if (!walletClient || !publicClient) {
+        throw new Error('Web3 clients not initialized. Check connection.')
+      }
 
-        // Step 2: Burning USDC
-        await new Promise(r => setTimeout(r, 1000))
-        updateBridgeState({ step: 'BURNING' })
-        
-        await new Promise(r => setTimeout(r, 2000))
-        const mockBurnHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-        const mockMessageHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-        updateBridgeState({
-          step: 'BURNED',
-          burnTxHash: mockBurnHash,
-          messageHash: mockMessageHash
-        })
+      // 1. Check current wallet chain matches source chain
+      const currentChainId = await walletClient.getChainId()
+      if (currentChainId !== sourceChainId) {
+        throw new Error(`Please switch your wallet network to ${chainConfig.name} in RainbowKit.`)
+      }
 
-        // Step 3: Waiting for Attestation from Circle Sandbox API
-        await new Promise(r => setTimeout(r, 1000))
-        updateBridgeState({ step: 'WAITING_FOR_ATTESTATION' })
-        
-        await new Promise(r => setTimeout(r, 3000))
-        const mockAttestation = `0x${Array.from({ length: 130 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-        updateBridgeState({
-          step: 'ATTESTATION_RECEIVED',
-          attestationBytes: mockAttestation
-        })
+      const decimals = 6
+      const amountUnits = parseUnits(amount, decimals)
 
-        // Step 4: Minting USDC on Arc Testnet
-        await new Promise(r => setTimeout(r, 1500))
-        updateBridgeState({ step: 'MINTING' })
-        
-        await new Promise(r => setTimeout(r, 2500))
-        const mockMintHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-        updateBridgeState({
-          step: 'MINTED',
-          mintTxHash: mockMintHash
-        })
+      // 2. Approve USDC on source chain
+      const approveTx = await walletClient.writeContract({
+        address: chainConfig.usdcAddress as `0x${string}`,
+        abi: usdcAbi,
+        functionName: 'approve',
+        args: [CCTP_TOKEN_MESSENGER, amountUnits]
+      })
+      
+      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx })
+      if (approveReceipt.status !== 'success') {
+        throw new Error('USDC Approval transaction failed on source chain')
+      }
+      
+      updateBridgeState({ step: 'APPROVED' })
 
-        // Step 5: Depositing to Job Escrow on Arc
-        await new Promise(r => setTimeout(r, 1500))
-        updateBridgeState({ step: 'CREATING_JOB' })
+      // 3. Initiate CCTP burn
+      const recipientBytes32 = toHex(address as `0x${string}`, { size: 32 })
+      const burnTx = await walletClient.writeContract({
+        address: CCTP_TOKEN_MESSENGER,
+        abi: tokenMessengerAbi,
+        functionName: 'depositForBurn',
+        args: [amountUnits, 26, recipientBytes32, chainConfig.usdcAddress as `0x${string}`]
+      })
 
-        // Execute actual contract call on Arc for Job creation if connected to Arc
-        const rewardUnits = parseUnits(amount, 6)
-        const deadlineSec = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
+      updateBridgeState({ step: 'BURNING' })
+      const burnReceipt = await publicClient.waitForTransactionReceipt({ hash: burnTx })
+      if (burnReceipt.status !== 'success') {
+        throw new Error('CCTP Burn transaction failed on source chain')
+      }
 
-        let txHash: `0x${string}`
+      // Extract CCTP message bytes from events
+      // CCTP MessageTransmitter event topic: MessageSent(bytes message)
+      const messageSentTopic = '0x8c5261668696ce2189d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2' // simulated hash topic
+      // Parse logs to find message
+      const log = burnReceipt.logs.find(
+        (l) => l.address.toLowerCase() === CCTP_MESSAGE_TRANSMITTER.toLowerCase()
+      )
+      if (!log) {
+        throw new Error('CCTP MessageSent log not found in transaction receipt')
+      }
+
+      const messageBytes = log.data
+      const messageHash = keccak256(messageBytes)
+
+      updateBridgeState({
+        step: 'BURNED',
+        burnTxHash: burnTx,
+        messageBytes,
+        messageHash
+      })
+
+      // 4. Poll Circle Attestation API
+      updateBridgeState({ step: 'WAITING_FOR_ATTESTATION' })
+      let attestationBytes = ''
+      const startTime = Date.now()
+      
+      // Timeout after 20 minutes
+      while (Date.now() - startTime < 20 * 60 * 1000) {
         try {
-          // Attempt actual contract postJob transaction
-          txHash = await writeContractAsync({
-            address: JOBCHAIN_CONTRACT_ADDRESS,
-            abi: jobChainAbi,
-            functionName: 'postJob',
-            args: [description, requiredCapabilities, rewardUnits, deadlineSec]
-          })
-        } catch (contractErr) {
-          console.warn('On-chain postJob failed, generating simulated job creation:', contractErr)
-          txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}` as `0x${string}`
-        }
-
-        updateBridgeState({
-          step: 'SUCCESS',
-          jobTxHash: txHash,
-          jobId: String(Math.floor(Math.random() * 1000) + 100)
-        })
-        toast.success('Cross-chain job posted successfully!')
-      } catch (err: any) {
-        updateBridgeState({ step: 'ERROR', error: err.message || 'Bridge simulation failed' })
-        toast.error(err.message || 'Bridge simulation failed')
+          const response = await fetch(
+            `https://iris-api-sandbox.circle.com/attestations/${messageHash}`
+          )
+          const data = await response.json()
+          if (data.status === 'complete' && data.attestation) {
+            attestationBytes = data.attestation
+            break
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 10000)) // Poll every 10 seconds
       }
-    } else {
-      // ═══════════════════════════════════════════════════════════════
-      // REAL CCTP BRIDGING WORKFLOW
-      // ═══════════════════════════════════════════════════════════════
-      try {
-        if (!walletClient || !publicClient) {
-          throw new Error('Web3 clients not initialized. Check connection.')
-        }
 
-        // 1. Check current wallet chain matches source chain
-        const currentChainId = await walletClient.getChainId()
-        if (currentChainId !== sourceChainId) {
-          throw new Error(`Please switch your wallet network to ${chainConfig.name} in RainbowKit.`)
-        }
-
-        const decimals = 6
-        const amountUnits = parseUnits(amount, decimals)
-
-        // 2. Approve USDC on source chain
-        const approveTx = await walletClient.writeContract({
-          address: chainConfig.usdcAddress as `0x${string}`,
-          abi: usdcAbi,
-          functionName: 'approve',
-          args: [CCTP_TOKEN_MESSENGER, amountUnits]
-        })
-        
-        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx })
-        if (approveReceipt.status !== 'success') {
-          throw new Error('USDC Approval transaction failed on source chain')
-        }
-        
-        updateBridgeState({ step: 'APPROVED' })
-
-        // 3. Initiate CCTP burn
-        const recipientBytes32 = toHex(address as `0x${string}`, { size: 32 })
-        const burnTx = await walletClient.writeContract({
-          address: CCTP_TOKEN_MESSENGER,
-          abi: tokenMessengerAbi,
-          functionName: 'depositForBurn',
-          args: [amountUnits, 26, recipientBytes32, chainConfig.usdcAddress as `0x${string}`]
-        })
-
-        updateBridgeState({ step: 'BURNING' })
-        const burnReceipt = await publicClient.waitForTransactionReceipt({ hash: burnTx })
-        if (burnReceipt.status !== 'success') {
-          throw new Error('CCTP Burn transaction failed on source chain')
-        }
-
-        // Extract CCTP message bytes from events
-        // CCTP MessageTransmitter event topic: MessageSent(bytes message)
-        const messageSentTopic = '0x8c5261668696ce2189d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2' // simulated hash topic
-        // Parse logs to find message
-        const log = burnReceipt.logs.find(
-          (l) => l.address.toLowerCase() === CCTP_MESSAGE_TRANSMITTER.toLowerCase()
-        )
-        if (!log) {
-          throw new Error('CCTP MessageSent log not found in transaction receipt')
-        }
-
-        const messageBytes = log.data
-        const messageHash = keccak256(messageBytes)
-
-        updateBridgeState({
-          step: 'BURNED',
-          burnTxHash: burnTx,
-          messageBytes,
-          messageHash
-        })
-
-        // 4. Poll Circle Attestation API
-        updateBridgeState({ step: 'WAITING_FOR_ATTESTATION' })
-        let attestationBytes = ''
-        const startTime = Date.now()
-        
-        // Timeout after 20 minutes
-        while (Date.now() - startTime < 20 * 60 * 1000) {
-          try {
-            const response = await fetch(
-              `https://iris-api-sandbox.circle.com/attestations/${messageHash}`
-            )
-            const data = await response.json()
-            if (data.status === 'complete' && data.attestation) {
-              attestationBytes = data.attestation
-              break
-            }
-          } catch {}
-          await new Promise((r) => setTimeout(r, 10000)) // Poll every 10 seconds
-        }
-
-        if (!attestationBytes) {
-          throw new Error('Circle CCTP Attestation retrieval timed out.')
-        }
-
-        updateBridgeState({
-          step: 'ATTESTATION_RECEIVED',
-          attestationBytes
-        })
-
-        // 5. Mint USDC on Arc Testnet
-        // Since Arc is the destination chain, we must switch or execute the receiver
-        // Note: For User Smart Accounts/Passkeys, the backend can execute this or we can ask EOA
-        updateBridgeState({ step: 'MINTING' })
-        
-        // Ask useSmartWallet to execute standard receiveMessage call on Arc Transmitter
-        const mintTx = await writeContractAsync({
-          address: CCTP_MESSAGE_TRANSMITTER,
-          abi: messageTransmitterAbi,
-          functionName: 'receiveMessage',
-          args: [messageBytes, attestationBytes]
-        })
-
-        updateBridgeState({
-          step: 'MINTED',
-          mintTxHash: mintTx
-        })
-
-        // 6. Deposit to Escrow and Post Job on Arc
-        updateBridgeState({ step: 'CREATING_JOB' })
-        const rewardUnits = parseUnits(amount, 6)
-        const deadlineSec = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
-
-        const jobTx = await writeContractAsync({
-          address: JOBCHAIN_CONTRACT_ADDRESS,
-          abi: jobChainAbi,
-          functionName: 'postJob',
-          args: [description, requiredCapabilities, rewardUnits, deadlineSec]
-        })
-
-        updateBridgeState({
-          step: 'SUCCESS',
-          jobTxHash: jobTx,
-          jobId: 'Arc_CCTP_Job'
-        })
-        toast.success('Cross-chain job funded and created successfully!')
-      } catch (err: any) {
-        updateBridgeState({ step: 'ERROR', error: err.message || 'Bridging failed' })
-        toast.error(err.message || 'Bridging failed')
+      if (!attestationBytes) {
+        throw new Error('Circle CCTP Attestation retrieval timed out.')
       }
+
+      updateBridgeState({
+        step: 'ATTESTATION_RECEIVED',
+        attestationBytes
+      })
+
+      // 5. Mint USDC on Arc Testnet
+      // Since Arc is the destination chain, we must switch or execute the receiver
+      // Note: For User Smart Accounts/Passkeys, the backend can execute this or we can ask EOA
+      updateBridgeState({ step: 'MINTING' })
+      
+      // Ask useSmartWallet to execute standard receiveMessage call on Arc Transmitter
+      const mintTx = await writeContractAsync({
+        address: CCTP_MESSAGE_TRANSMITTER,
+        abi: messageTransmitterAbi,
+        functionName: 'receiveMessage',
+        args: [messageBytes, attestationBytes]
+      })
+
+      updateBridgeState({
+        step: 'MINTED',
+        mintTxHash: mintTx
+      })
+
+      // 6. Deposit to Escrow and Post Job on Arc
+      updateBridgeState({ step: 'CREATING_JOB' })
+      const rewardUnits = parseUnits(amount, 6)
+      const deadlineSec = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
+
+      const jobTx = await writeContractAsync({
+        address: JOBCHAIN_CONTRACT_ADDRESS,
+        abi: jobChainAbi,
+        functionName: 'postJob',
+        args: [description, requiredCapabilities, rewardUnits, deadlineSec]
+      })
+
+      updateBridgeState({
+        step: 'SUCCESS',
+        jobTxHash: jobTx,
+        jobId: 'Arc_CCTP_Job'
+      })
+      toast.success('Cross-chain job funded and created successfully!')
+    } catch (err: any) {
+      updateBridgeState({ step: 'ERROR', error: err.message || 'Bridging failed' })
+      toast.error(err.message || 'Bridging failed')
     }
   }
 
