@@ -96,36 +96,28 @@ export function MicroStreamTab() {
       const rewardUnits = parseUnits(amountStr, 6)
 
       if (action === 'deposit') {
-        try {
-          // 1. Approve USDC transfer to GatewayVault
-          await writeContractAsync({
-            address: USDC_ADDRESS_ARC,
-            abi: usdcAbi,
-            functionName: 'approve',
-            args: [GATEWAY_VAULT_ADDRESS, rewardUnits]
-          })
-          // 2. Deposit USDC into GatewayVault
-          await writeContractAsync({
-            address: GATEWAY_VAULT_ADDRESS,
-            abi: gatewayVaultAbi,
-            functionName: 'deposit',
-            args: [rewardUnits]
-          })
-        } catch (contractErr) {
-          console.warn('On-chain vault transactions skipped/simulated:', contractErr)
-        }
+        // 1. Approve USDC transfer to GatewayVault
+        await writeContractAsync({
+          address: USDC_ADDRESS_ARC,
+          abi: usdcAbi,
+          functionName: 'approve',
+          args: [GATEWAY_VAULT_ADDRESS, rewardUnits]
+        })
+        // 2. Deposit USDC into GatewayVault
+        await writeContractAsync({
+          address: GATEWAY_VAULT_ADDRESS,
+          abi: gatewayVaultAbi,
+          functionName: 'deposit',
+          args: [rewardUnits]
+        })
       } else if (action === 'withdraw') {
-        try {
-          // Withdraw USDC from GatewayVault
-          await writeContractAsync({
-            address: GATEWAY_VAULT_ADDRESS,
-            abi: gatewayVaultAbi,
-            functionName: 'withdraw',
-            args: [rewardUnits]
-          })
-        } catch (contractErr) {
-          console.warn('On-chain vault transactions skipped/simulated:', contractErr)
-        }
+        // Withdraw USDC from GatewayVault
+        await writeContractAsync({
+          address: GATEWAY_VAULT_ADDRESS,
+          abi: gatewayVaultAbi,
+          functionName: 'withdraw',
+          args: [rewardUnits]
+        })
       }
 
       // Sync with local database
