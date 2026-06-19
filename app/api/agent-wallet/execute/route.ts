@@ -75,6 +75,10 @@ export async function POST(req: Request) {
       }
     }
 
+    if (!txHash) {
+      return NextResponse.json({ error: `Transaction execution failed or timed out: ${txId}` }, { status: 500 })
+    }
+
     return NextResponse.json({
       simulated: false,
       txId,

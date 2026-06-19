@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!txHash) {
-      txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
+      return NextResponse.json({ error: 'On-chain settlement transaction failed or Circle is not configured' }, { status: 500 })
     }
 
     return NextResponse.json({

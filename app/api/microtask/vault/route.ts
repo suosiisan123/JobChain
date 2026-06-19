@@ -45,51 +45,59 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Insufficient earnings balance' }, { status: 400 })
       }
       
-      let txHash = ''
-      if (hasCircleConfig && circleClient) {
-        try {
-          const agentWallets = getAllAgentWallets()
-          let agentWalletId = ''
-          for (const agentId of Object.keys(agentWallets)) {
-            agentWalletId = agentWallets[agentId].walletId
-            break
-          }
+      if (!hasCircleConfig || !circleClient) {
+        return NextResponse.json({ error: 'Circle integration is not configured on the server' }, { status: 500 })
+      }
 
-          if (agentWalletId) {
-            const transferResponse = await circleClient.createTransaction({
-              walletId: agentWalletId,
-              tokenAddress: '0x3600000000000000000000000000000000000000', // USDC on Arc Testnet
-              destinationAddress: address,
-              amount: [numAmount.toFixed(6)],
-              fee: {
-                type: 'level',
-                config: { feeLevel: 'MEDIUM' }
-              }
-            })
-            const txId = transferResponse.data?.id
-            if (txId) {
-              let attempts = 0
-              while (attempts < 10) {
-                const txStatus = await circleClient.getTransaction({ id: txId })
-                if (txStatus.data?.transaction?.txHash) {
-                  txHash = txStatus.data.transaction.txHash
-                  break
-                }
-                attempts++
-                await new Promise(r => setTimeout(r, 1000))
-              }
-            }
+      let txHash = ''
+      const agentWallets = getAllAgentWallets()
+      let agentWalletId = ''
+      for (const agentId of Object.keys(agentWallets)) {
+        agentWalletId = agentWallets[agentId].walletId
+        break
+      }
+
+      if (!agentWalletId) {
+        return NextResponse.json({ error: 'No active agent wallet registered' }, { status: 500 })
+      }
+
+      try {
+        const transferResponse = await circleClient.createTransaction({
+          walletId: agentWalletId,
+          tokenAddress: '0x3600000000000000000000000000000000000000', // USDC on Arc Testnet
+          destinationAddress: address,
+          amount: [numAmount.toFixed(6)],
+          fee: {
+            type: 'level',
+            config: { feeLevel: 'MEDIUM' }
           }
-        } catch (err: any) {
-          console.error('[x402] On-chain earnings payout failed/skipped:', err.message)
+        })
+        const txId = transferResponse.data?.id
+        if (txId) {
+          let attempts = 0
+          while (attempts < 15) {
+            const txStatus = await circleClient.getTransaction({ id: txId })
+            if (txStatus.data?.transaction?.txHash) {
+              txHash = txStatus.data.transaction.txHash
+              break
+            }
+            attempts++
+            await new Promise(r => setTimeout(r, 1000))
+          }
         }
+      } catch (err: any) {
+        return NextResponse.json({ error: `On-chain transfer failed: ${err.message}` }, { status: 500 })
+      }
+
+      if (!txHash) {
+        return NextResponse.json({ error: 'On-chain transfer timed out or failed to execute' }, { status: 500 })
       }
 
       const nextBal = gatewayDb.adjustAgentBalance(address, -numAmount)
       return NextResponse.json({ 
         message: 'Earnings withdrawal successful', 
         balance: nextBal, 
-        txHash: txHash || undefined 
+        txHash: txHash
       })
     }
 
