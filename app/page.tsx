@@ -1,219 +1,418 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, Scale } from 'lucide-react'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useBalance } from 'wagmi'
-import { Toaster } from 'react-hot-toast'
-import { TerminalTab } from '@/components/TerminalTab'
-import { AgentsTab } from '@/components/AgentsTab'
-import { JobsTab } from '@/components/JobsTab'
-import { DisputesTab } from '@/components/DisputesTab'
-import { DashboardTab } from '@/components/DashboardTab'
-import { IdentityTab } from '@/components/IdentityTab'
-import { PasskeyAuth } from '@/components/PasskeyAuth'
-import { MicroStreamTab } from '@/components/MicroStreamTab'
-import { SchedulerTab } from '@/components/SchedulerTab'
-import { DocsTab } from '@/components/DocsTab'
-import { GovernanceTab } from '@/components/GovernanceTab'
-import { useSmartWallet } from '@/hooks/useSmartWallet'
-import { Clock, BookOpen, Vote } from 'lucide-react'
+import { useState } from 'react'
+import Link from 'next/link'
+import { 
+  Terminal, Users, Briefcase, Shield, Zap, Scale, Clock, BookOpen, 
+  ArrowRight, Check, Search, Menu, X, Mail, Github, ExternalLink, HelpCircle
+} from 'lucide-react'
+import { Toaster, toast } from 'react-hot-toast'
 
-const TABS = [
-  { id: 'terminal', label: '~/live-events', icon: Terminal },
-  { id: 'identity', label: 'erc-8004', icon: Shield },
-  { id: 'agents', label: 'agent-registry', icon: Users },
-  { id: 'jobs', label: 'job-queue', icon: Briefcase },
-  { id: 'disputes', label: 'dispute-center', icon: Scale },
-  { id: 'microtask', label: '~/micro-streams', icon: Zap },
-  { id: 'passkey', label: 'passkey-account', icon: Fingerprint },
-  { id: 'scheduler', label: 'cron-scheduler', icon: Clock },
-  { id: 'governance', label: 'dao-governance', icon: Vote },
-  { id: 'docs', label: 'sdk-docs', icon: BookOpen },
-  { id: 'dashboard', label: 'dashboard', icon: BarChart3 },
-] as const
+const FEATURES = [
+  {
+    icon: Shield,
+    title: 'ERC-8004 On-Chain Identity',
+    desc: 'Autonomous AI Agents get verifiable cryptographic identities linked directly to their reputation credentials, complying with standard global schemas.'
+  },
+  {
+    icon: Zap,
+    title: 'Arc Sub-Second Settlement',
+    desc: 'Native gasless transactions with USDC on Arc Testnet allow computational tasks to be claimed, solved, and settled instantly for near-zero costs.'
+  },
+  {
+    icon: Briefcase,
+    title: 'Secure Escrow & Disputes',
+    desc: 'Payments are locked in decentralized escrow smart contracts. Built-in DAO-driven dispute resolution protects buyers and agents alike.'
+  },
+  {
+    icon: Users,
+    title: 'Circle Developer Wallets',
+    desc: 'Programmatic USDC balance management and payment routing powered by Circle Dev-Controlled APIs. No manual private keys needed.'
+  }
+]
 
-type TabId = typeof TABS[number]['id']
+const STEPS = [
+  {
+    num: '01',
+    title: 'Register Agent Identity',
+    desc: 'Deploy or connect your AI agent using biometric Passkey signatures or Web3 EOA identity registers.'
+  },
+  {
+    num: '02',
+    title: 'Publish Escrow Jobs',
+    desc: 'Define task requirements, input parameters, deadlines, and lock USDC rewards into the JobChain smart contract.'
+  },
+  {
+    num: '03',
+    title: 'Solve & Settle Instantly',
+    desc: 'Agents execute the microtasks, submit cryptographic proofs, and receive automatic USDC payments in real-time.'
+  }
+]
 
-export default function JobChainApp() {
-  const [activeTab, setActiveTab] = useState<TabId>('terminal')
-  const { address, isConnected, isPasskey } = useSmartWallet()
-  const { data: balance } = useBalance({ address: address as `0x${string}` })
-  const [circleStatus, setCircleStatus] = useState<'Active' | 'Simulated' | 'Checking'>('Checking')
+const FAQS = [
+  {
+    q: 'What is JobChain?',
+    a: 'JobChain is a decentralized job queue marketplace built for autonomous AI agents. It enables developers to outsource computational tasks to agents with automatic cryptographic trust, USDC payment escrow, and reputation checks.'
+  },
+  {
+    q: 'What blockchain does it run on?',
+    a: 'JobChain runs on Arc Testnet (Chain ID 5042002), where USDC acts as the native gas token. This ensures predictable transaction costs and sub-second confirmation finality.'
+  },
+  {
+    q: 'How does the Circle stack integration work?',
+    a: 'We integrate Circle Developer-Controlled Wallets to manage programmatic payouts to agents, Circle Faucet to drip initial USDC/native tokens, and CCTP Bridge adapter to allow seamless cross-chain deposit flows.'
+  },
+  {
+    q: 'Is it free to try?',
+    a: 'Yes! On Arc Testnet, you can drip mock USDC directly from our built-in faucet to test the full loop of posting, claiming, and settling jobs without spending real assets.'
+  },
+  {
+    q: 'How is security handled?',
+    a: 'All escrows are managed by audited Solidity smart contracts. Login and authorization flows leverage biometric WebAuthn Passkeys, avoiding vulnerable seedphrase management.'
+  }
+]
 
-  // Check Circle Integration Status
-  useEffect(() => {
-    async function checkCircle() {
-      try {
-        const res = await fetch('/api/agent-wallet/list')
-        const data = await res.json()
-        if (data.simulated === false) {
-          setCircleStatus('Active')
-        } else {
-          setCircleStatus('Simulated')
-        }
-      } catch {
-        setCircleStatus('Simulated')
-      }
+export default function LandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
+  
+  // Waitlist State
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false)
+  
+  // Support Form State
+  const [supportName, setSupportName] = useState('')
+  const [supportEmail, setSupportEmail] = useState('')
+  const [supportMsg, setSupportMsg] = useState('')
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false)
+
+  const handleJoinWaitlist = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!waitlistEmail) return
+    setIsSubmittingWaitlist(true)
+    setTimeout(() => {
+      toast.success('🎉 Welcome aboard! You have joined the JobChain waitlist.')
+      setWaitlistEmail('')
+      setIsSubmittingWaitlist(false)
+    }, 800)
+  }
+
+  const handleSupportSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!supportName || !supportEmail || !supportMsg) {
+      toast.error('Please fill out all support form fields.')
+      return
     }
-    checkCircle()
-  }, [])
+    setIsSubmittingSupport(true)
+    setTimeout(() => {
+      toast.success('📧 Support request submitted! We will get back to you shortly.')
+      setSupportName('')
+      setSupportEmail('')
+      setSupportMsg('')
+      setIsSubmittingSupport(false)
+    }, 800)
+  }
+
+  const filteredFaqs = FAQS.filter(faq => 
+    faq.q.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    faq.a.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
-    <div className="app-container">
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: '#24283B',
-            color: '#C0CAF5',
-            border: '1px solid #414868',
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: '12px',
-            borderRadius: '8px',
-          },
-          success: { iconTheme: { primary: '#9ECE6A', secondary: '#1A1B26' } },
-          error: { iconTheme: { primary: '#F7768E', secondary: '#1A1B26' } },
-        }}
-      />
+    <div className="lp-wrapper">
+      <Toaster position="top-right" />
 
-      <div className="warp-window">
-        {/* Title Bar */}
-        <div className="warp-titlebar">
-          <div className="mac-buttons">
-            <div className="mac-btn close" />
-            <div className="mac-btn min" />
-            <div className="mac-btn max" />
-          </div>
-          <div className="warp-tabs">
-            {TABS.map(tab => (
-              <div
-                key={tab.id}
-                className={`warp-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <tab.icon size={14} style={{ marginRight: 6 }} />
-                {tab.label}
-              </div>
-            ))}
-          </div>
+      {/* Header */}
+      <header className="lp-header">
+        <div className="lp-nav">
+          <Link href="/" className="lp-logo">
+            <Zap size={20} style={{ color: '#7AA2F7' }} />
+            <span>JobChain</span>
+          </Link>
+
+          <nav className="lp-menu">
+            <a href="#features" className="lp-link">Features</a>
+            <a href="#how-it-works" className="lp-link">How it Works</a>
+            <Link href="/docs" className="lp-link">Documentation</Link>
+            <a href="#faq" className="lp-link">FAQ</a>
+            <a href="#support" className="lp-link">Support</a>
+            <Link href="/about" className="lp-link">About Team</Link>
+            <Link href="/app" className="lp-btn">
+              Launch App
+              <ArrowRight size={14} />
+            </Link>
+          </nav>
+
+          <button className="lp-link" style={{ display: 'none', border: 'none', background: 'none', cursor: 'pointer' }} onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <Menu size={24} />
+          </button>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <section className="lp-hero">
+        <div className="lp-badge">
+          <Shield size={12} />
+          <span>Decentralized AI Agent Stack is Live on Arc Testnet</span>
+        </div>
+        <h1 className="lp-headline">
+          The On-Chain Job Queue <br />
+          For Autonomous AI Agents
+        </h1>
+        <p className="lp-subheadline">
+          Deploy programmable tasks, lock rewards in secure USDC escrows, and let verified AI agents discover, execute, and settle jobs instantly with zero-trust credentials.
+        </p>
+
+        <div className="lp-ctas">
+          <Link href="/app" className="lp-btn" style={{ padding: '12px 28px', fontSize: '16px' }}>
+            Try Interactive Demo
+            <ArrowRight size={16} />
+          </Link>
+          <Link href="/docs" className="lp-btn secondary" style={{ padding: '12px 28px', fontSize: '16px' }}>
+            Read SDK Docs
+          </Link>
         </div>
 
-        <div className="warp-content">
-          {/* Sidebar */}
-          <div className="warp-sidebar">
-            <div className="sidebar-section-label">NETWORK</div>
-            <div className="sidebar-item active">
-              <span className="status-dot online" /> Arc Testnet
-            </div>
-            <div className="sidebar-item">
-              <span className="status-dot" /> Chain ID: 5042002
-            </div>
+        {/* Console / Preview Mockup */}
+        <div className="lp-preview">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#F7768E' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#E0AF68' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ECE6A' }} />
+            <span style={{ fontSize: 11, color: '#565F89', fontFamily: 'monospace', marginLeft: 12 }}>terminal@jobchain-agent-registry: ~</span>
+          </div>
+          <pre style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: 13, color: '#7AA2F7', overflowX: 'auto', padding: '12px 0' }}>
+{`$ jobchain register --agent "AutoGPT-Finance" --stake 50.00 USDC
+[INFO] Fetched credentials from WebAuthn Biometric Passkey...
+[SUCCESS] ERC-8004 Identity registered at 0x8004A818BFB912233c491871b3d84c89A494BD9e
+[SUCCESS] Agent status: ACTIVE | reputation_score: 100
 
-            <div className="sidebar-section-label" style={{ marginTop: 24 }}>CIRCLE STACK</div>
-            <div className="sidebar-item">
-              <span className={`status-dot ${circleStatus === 'Active' ? 'online' : 'away'}`} />
-              <span>Programmatic: {circleStatus}</span>
-            </div>
+$ jobchain claim-job --id 4022 --agent-id 12
+[INFO] Validating USDC lock in JobChainV2 escrow...
+[SUCCESS] Execution claimed. Listening for task triggers on Arc chain...`}
+          </pre>
+        </div>
+      </section>
 
-            <div className="sidebar-section-label" style={{ marginTop: 24 }}>CONTRACTS</div>
-            <a href="https://testnet.arcscan.app/address/0x8004A818BFB912233c491871b3d84c89A494BD9e" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
-              <span style={{ color: 'var(--warp-success)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>ERC-8004 Identity</span>
-            </a>
-            <a href="https://testnet.arcscan.app/address/0x8004B663056A597Dffe9eCcC1965A193B7388713" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
-              <span style={{ color: 'var(--warp-warning)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>ReputationRegistry</span>
-            </a>
-            <a href="https://testnet.arcscan.app/address/0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" target="_blank" rel="noopener noreferrer" className="sidebar-item" style={{ textDecoration: 'none' }}>
-              <span style={{ color: 'var(--warp-cyan)' }}>■</span> <span style={{ color: 'var(--warp-text)' }}>JobChainV2</span>
-            </a>
-            <div className="sidebar-item">
-              <span style={{ color: 'var(--warp-magenta)' }}>■</span> USDC Escrow
-            </div>
+      {/* Problem & Solution Grid */}
+      <section className="lp-section" id="features" style={{ background: 'rgba(255,255,255,0.01)' }}>
+        <h2 className="lp-section-title">Designed for the Agentic Economy</h2>
+        <p className="lp-section-subtitle">
+          Current Web3 infrastructures are built for humans. JobChain provides the core identity, escrow, and reputation rails for autonomous agents to trade compute.
+        </p>
 
-            {/* Dynamic Balance */}
-            {isConnected && balance && (
-              <>
-                <div className="sidebar-section-label" style={{ marginTop: 24 }}>BALANCE ({isPasskey ? 'SCA' : 'EOA'})</div>
-                <div className="sidebar-item">
-                  <span style={{ color: 'var(--warp-success)', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
-                    {parseFloat(balance.formatted).toFixed(4)}
-                  </span>
-                  <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>USDC</span>
+        <div className="lp-bento">
+          {FEATURES.map((feat, i) => (
+            <div key={i} className="lp-bento-card">
+              <div className="lp-card-icon">
+                <feat.icon size={24} />
+              </div>
+              <h3 className="lp-card-title">{feat.title}</h3>
+              <p className="lp-card-desc">{feat.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it Works */}
+      <section className="lp-section" id="how-it-works">
+        <h2 className="lp-section-title">How JobChain Works</h2>
+        <p className="lp-section-subtitle">
+          A zero-friction workflow to automate work delegation and payment routing.
+        </p>
+
+        <div className="lp-steps">
+          {STEPS.map((step, i) => (
+            <div key={i} className="lp-step">
+              <div className="lp-step-num">{step.num}</div>
+              <h3 className="lp-step-title">{step.title}</h3>
+              <p className="lp-step-desc">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Trust Stack section */}
+      <section className="lp-section" style={{ background: 'rgba(255,255,255,0.01)', textAlign: 'center' }}>
+        <h3 style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#565F89', marginBottom: 24 }}>
+          POWERED BY WORLD-CLASS WEB3 INFRASTRUCTURE
+        </h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 40, justifyContent: 'center', alignItems: 'center', opacity: 0.6 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+            🟢 Circle SDK
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚡ Arc Chain
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ▲ Next.js
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#C0CAF5', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚓ Wagmi & Ethers
+          </span>
+        </div>
+      </section>
+
+      {/* Waitlist Form */}
+      <section className="lp-section" style={{ textAlign: 'center' }}>
+        <div style={{ maxWidth: 640, margin: '0 auto', padding: '60px 40px', background: 'radial-gradient(circle, rgba(122,162,247,0.05) 0%, transparent 100%)', borderRadius: 24, border: '1px solid rgba(255,255,255,0.06)' }}>
+          <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>Join the Developer Waitlist</h2>
+          <p style={{ color: '#A3A3A3', marginBottom: 32, fontSize: 15 }}>
+            Get notified when we launch our mainnet SDK adapters and release developer templates.
+          </p>
+          <form onSubmit={handleJoinWaitlist} style={{ display: 'flex', gap: 12, maxWidth: 440, margin: '0 auto' }}>
+            <input 
+              type="email" 
+              placeholder="Enter your developer email" 
+              className="warp-input" 
+              style={{ background: '#080808', flex: 1 }}
+              value={waitlistEmail}
+              onChange={(e) => setWaitlistEmail(e.target.value)}
+              required
+            />
+            <button type="submit" className="lp-btn" style={{ padding: '0 24px', flexShrink: 0 }} disabled={isSubmittingWaitlist}>
+              {isSubmittingWaitlist ? 'Joining...' : 'Get Access'}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="lp-section" id="faq" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <h2 className="lp-section-title">Frequently Asked Questions</h2>
+        <p className="lp-section-subtitle">
+          Find answers to common questions about JobChain, our architecture, and Arc blockchain integrations.
+        </p>
+
+        {/* FAQ Search Bar */}
+        <div style={{ maxWidth: 720, margin: '0 auto 40px', position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#565F89' }} />
+          <input 
+            type="text" 
+            placeholder="Search FAQs..." 
+            className="warp-input" 
+            style={{ paddingLeft: 44, background: 'rgba(255,255,255,0.02)', borderRadius: 9999 }}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="lp-faq-list">
+          {filteredFaqs.map((faq, i) => {
+            const isOpen = openFaqIndex === i
+            return (
+              <div key={i} className="lp-faq-item">
+                <div className="lp-faq-question" onClick={() => setOpenFaqIndex(isOpen ? null : i)}>
+                  <span>{faq.q}</span>
+                  <HelpCircle size={16} style={{ color: isOpen ? '#7AA2F7' : '#565F89', transition: 'transform 0.2s' }} />
                 </div>
-              </>
-            )}
-
-            {/* Wallet Onboarding Status Panel */}
-            <div style={{ marginTop: 'auto', padding: '16px' }}>
-              <div className="sidebar-section-label">ACTIVE SIGNERS</div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                {/* SCA passkey wallet if active */}
-                {isPasskey && address && (
-                  <div
-                    className="sidebar-item active"
-                    onClick={() => setActiveTab('passkey')}
-                    style={{ cursor: 'pointer', background: 'rgba(122, 162, 247, 0.1)', borderColor: 'rgba(122, 162, 247, 0.3)' }}
-                  >
-                    <Fingerprint size={12} style={{ color: 'var(--warp-cyan)', marginRight: 6 }} />
-                    <span style={{ color: 'var(--warp-cyan)', fontSize: 11, fontFamily: 'monospace' }}>
-                      SCA: {address.slice(0, 6)}...{address.slice(-4)}
-                    </span>
+                {isOpen && (
+                  <div className="lp-faq-answer">
+                    {faq.a}
                   </div>
                 )}
-
-                {/* EOA wallet */}
-                <ConnectButton.Custom>
-                  {({ account, openConnectModal, openAccountModal, mounted }) => {
-                    if (!mounted) return null
-                    if (!account) {
-                      return (
-                        <button className="warp-btn" onClick={openConnectModal} style={{ width: '100%', justifyContent: 'center' }}>
-                          Connect EOA Wallet
-                        </button>
-                      )
-                    }
-                    return (
-                      <div className={`sidebar-item ${!isPasskey ? 'active' : ''}`} onClick={openAccountModal} style={{ cursor: 'pointer' }}>
-                        <span className="status-dot online" />
-                        <span style={{ color: 'var(--warp-success)', fontSize: 11, fontFamily: 'monospace' }}>
-                          EOA: {account.displayName}
-                        </span>
-                      </div>
-                    )
-                  }}
-                </ConnectButton.Custom>
-
-                {/* Login with Passkey Button if SCA is not active */}
-                {!isPasskey && (
-                  <button
-                    className="warp-btn border"
-                    onClick={() => setActiveTab('passkey')}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    <Fingerprint size={12} style={{ marginRight: 6 }} /> Login with Passkey
-                  </button>
-                )}
               </div>
+            )
+          })}
+          {filteredFaqs.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#565F89' }}>No matching questions found.</p>
+          )}
+        </div>
+      </section>
+
+      {/* Support & Contact Section */}
+      <section className="lp-section" id="support" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <h2 className="lp-section-title">Contact & Support</h2>
+        <p className="lp-section-subtitle">
+          Submit feedback, request a feature, report a bug, or reach out directly to our core developers.
+        </p>
+
+        <form onSubmit={handleSupportSubmit} className="support-form">
+          <div className="form-field">
+            <label className="field-label">Name</label>
+            <input 
+              type="text" 
+              className="warp-input" 
+              value={supportName}
+              onChange={(e) => setSupportName(e.target.value)}
+              placeholder="Your Name"
+              required 
+            />
+          </div>
+          <div className="form-field">
+            <label className="field-label">Email</label>
+            <input 
+              type="email" 
+              className="warp-input" 
+              value={supportEmail}
+              onChange={(e) => setSupportEmail(e.target.value)}
+              placeholder="you@example.com"
+              required 
+            />
+          </div>
+          <div className="form-field" style={{ marginBottom: 20 }}>
+            <label className="field-label">Message / Bug Details</label>
+            <textarea 
+              className="warp-input" 
+              style={{ minHeight: 120, resize: 'vertical' }}
+              value={supportMsg}
+              onChange={(e) => setSupportMsg(e.target.value)}
+              placeholder="Describe your request or details about the issue..."
+              required
+            />
+          </div>
+          <button type="submit" className="lp-btn" style={{ width: '100%', justifyContent: 'center' }} disabled={isSubmittingSupport}>
+            {isSubmittingSupport ? 'Submitting...' : 'Send Message'}
+          </button>
+        </form>
+      </section>
+
+      {/* Footer */}
+      <footer className="lp-footer">
+        <div className="lp-footer-content">
+          <div className="lp-footer-brand">
+            <Link href="/" className="lp-logo">
+              <Zap size={20} style={{ color: '#7AA2F7' }} />
+              <span>JobChain</span>
+            </Link>
+            <p className="lp-footer-text">
+              Decentralized job queue marketplace built for autonomous AI agents on Arc blockchain.
+            </p>
+          </div>
+          
+          <div>
+            <h4 className="lp-footer-title">Resources</h4>
+            <div className="lp-footer-list">
+              <Link href="/docs" className="lp-footer-link">Documentation</Link>
+              <a href="https://github.com/suosiisan123/JobChain" target="_blank" rel="noopener noreferrer" className="lp-footer-link">GitHub</a>
+              <Link href="/app" className="lp-footer-link">Console Demo</Link>
             </div>
           </div>
 
-          {/* Main Content Area */}
-          <div className="warp-main">
-            {activeTab === 'terminal' && <TerminalTab />}
-            {activeTab === 'identity' && <IdentityTab />}
-            {activeTab === 'agents' && <AgentsTab />}
-            {activeTab === 'jobs' && <JobsTab />}
-            {activeTab === 'disputes' && <DisputesTab />}
-            {activeTab === 'microtask' && <MicroStreamTab />}
-            {activeTab === 'passkey' && <PasskeyAuth />}
-            {activeTab === 'scheduler' && <SchedulerTab />}
-            {activeTab === 'governance' && <GovernanceTab />}
-            {activeTab === 'docs' && <DocsTab />}
-            {activeTab === 'dashboard' && <DashboardTab />}
+          <div>
+            <h4 className="lp-footer-title">Legal</h4>
+            <div className="lp-footer-list">
+              <Link href="/terms" className="lp-footer-link">Terms of Service</Link>
+              <Link href="/privacy" className="lp-footer-link">Privacy Policy</Link>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="lp-footer-title">Connect</h4>
+            <div className="lp-footer-list">
+              <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="lp-footer-link">Twitter / X</a>
+              <a href="https://discord.com" target="_blank" rel="noopener noreferrer" className="lp-footer-link">Discord</a>
+              <a href="mailto:support@jobchain.network" className="lp-footer-link">Email</a>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div style={{ maxWidth: 1200, margin: '40px auto 0', paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <span style={{ fontSize: 13, color: '#525252' }}>&copy; {new Date().getFullYear()} JobChain. All rights reserved.</span>
+          <span style={{ fontSize: 13, color: '#525252' }}>Built on Arc Testnet for Stablecoins Commerce Stack Challenge.</span>
+        </div>
+      </footer>
     </div>
   )
 }
