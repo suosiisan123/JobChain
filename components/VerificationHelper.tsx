@@ -124,11 +124,8 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
       }
     } catch (err: any) {
       console.error('On-chain verification error:', err)
-      // Fallback: simulate validation if contract call fails (e.g. not connected/deployed locally)
-      setTimeout(() => {
-        setIsValidOnChain(true)
-        toast.success('Simulation: Proof signature matches the authority key!')
-      }, 1000)
+      setIsValidOnChain(false)
+      toast.error(`On-chain verification failed: ${err.message || err}`)
     } finally {
       setVerifying(false)
     }

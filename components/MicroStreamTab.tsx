@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
-import { usePublicClient } from 'wagmi'
+import { usePublicClient, useSignMessage } from 'wagmi'
 import { Wallet, ShieldCheck, Zap, Play, Square, Loader2, Plus, ArrowDown, RefreshCw, BarChart2, Coins } from 'lucide-react'
 import { GATEWAY_VAULT_ADDRESS, gatewayVaultAbi, USDC_ADDRESS_ARC, usdcAbi } from '@/lib/contracts'
 import { parseUnits, formatUnits } from 'viem'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import toast from 'react-hot-toast'
 
 interface StreamLog {
@@ -19,6 +20,11 @@ interface StreamLog {
 export function MicroStreamTab() {
   const { address, isConnected, writeContractAsync } = useSmartWallet()
   const publicClient = usePublicClient()
+  const { signMessageAsync } = useSignMessage()
+
+  // Session keys
+  const [sessionPrivateKey, setSessionPrivateKey] = useState<string | null>(null)
+  const [authSignature, setAuthSignature] = useState<string | null>(null)
 
   // Vault Balances
   const [buyerVault, setBuyervault] = useState(0)
@@ -142,7 +148,7 @@ export function MicroStreamTab() {
   }
 
   // Stream Nanopayments loop
-  const toggleStreaming = () => {
+  const toggleStreaming = async () => {
     if (isStreaming) {
       // Stop stream
       if (streamIntervalRef.current) {
@@ -162,6 +168,31 @@ export function MicroStreamTab() {
         return
       }
 
+      let privKey = sessionPrivateKey
+      let authSig = authSignature
+
+      if (!privKey || !authSig) {
+        const tid = toast.loading('Authorizing payment session... Please sign message in your wallet.')
+        try {
+          const generatedKey = generatePrivateKey()
+          const account = privateKeyToAccount(generatedKey)
+          const sessionAddr = account.address
+
+          const authMsg = `Authorize JobChain Session: ${sessionAddr.toLowerCase()} for Buyer: ${address.toLowerCase()}`
+          const signedAuth = await signMessageAsync({ message: authMsg })
+
+          setSessionPrivateKey(generatedKey)
+          setAuthSignature(signedAuth)
+
+          privKey = generatedKey
+          authSig = signedAuth
+          toast.success('Session authorized successfully!', { id: tid })
+        } catch (err: any) {
+          toast.error(`Session authorization failed: ${err.message || err}`, { id: tid })
+          return
+        }
+      }
+
       setIsStreaming(true)
       toast.success('Micro-job payment stream started!')
 
@@ -173,19 +204,24 @@ export function MicroStreamTab() {
       streamIntervalRef.current = setInterval(async () => {
         // Generate cryptographic-receipt payload
         const nonce = `${Date.now()}_${Math.floor(Math.random() * 100000)}`
-        const mockSignature = `0x_mock_sig_${Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-
-        const receipt = {
-          buyer: buyerAddr,
-          receiver: agentReceiver,
-          amount: increment.toFixed(6),
-          nonce,
-          signature: mockSignature
-        }
-
-        const base64Receipt = Buffer.from(JSON.stringify(receipt)).toString('base64')
 
         try {
+          const account = privateKeyToAccount(privKey as `0x${string}`)
+          const msg = `x402-nanopayment:${buyerAddr}:${agentReceiver}:${increment.toFixed(6)}:${nonce}`
+          const signature = await account.signMessage({ message: msg })
+
+          const receipt = {
+            buyer: buyerAddr,
+            receiver: agentReceiver,
+            amount: increment.toFixed(6),
+            nonce,
+            signature,
+            sessionAddress: account.address,
+            authSignature: authSig
+          }
+
+          const base64Receipt = Buffer.from(JSON.stringify(receipt)).toString('base64')
+
           const res = await fetch('/api/microtask/request', {
             method: 'POST',
             headers: {
@@ -216,7 +252,7 @@ export function MicroStreamTab() {
                 timestamp: timeStr,
                 amount: increment,
                 status: '200 OK',
-                txHash: mockSignature.slice(0, 16) + '...',
+                txHash: signature.slice(0, 16) + '...',
                 output: data.output
               }
             ])

@@ -97,9 +97,8 @@ export function JobsTab() {
 
   // CCTP Bridge configurations
   const [selectedChainId, setSelectedChainId] = useState<number>(5042002) // default Arc Testnet Direct
-  const [isSimulated, setIsSimulated] = useState(true)
+  const [isSimulated, setIsSimulated] = useState(false)
   const { bridgeState, startBridgeAndEscrow, resetBridge } = useCCTP()
-
   const selectedChain = CCTP_CHAINS.find(c => c.id === selectedChainId)
 
   // Retrieve source chain balance if CCTP is selected

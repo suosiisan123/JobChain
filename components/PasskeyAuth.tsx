@@ -19,6 +19,30 @@ export function PasskeyAuth() {
   const [gasBalance, setGasBalance] = useState('0.0000')
   const [txHistory, setTxHistory] = useState<any[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  const [faucetLoading, setFaucetLoading] = useState(false)
+
+  const handleFaucet = async () => {
+    if (!address) return
+    setFaucetLoading(true)
+    try {
+      const res = await fetch('/api/faucet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Faucet drip requested!')
+        setTimeout(fetchWalletDetails, 5000)
+      } else {
+        toast.error(data.error || 'Faucet request failed')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to request faucet')
+    } finally {
+      setFaucetLoading(false)
+    }
+  }
 
   // Fetch balances and history
   const fetchWalletDetails = async () => {
@@ -136,6 +160,14 @@ export function PasskeyAuth() {
     return (
       <div className="card" style={{ border: '1px solid var(--warp-cyan)', position: 'relative' }}>
         <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8 }}>
+          <button
+            className="warp-btn border"
+            onClick={handleFaucet}
+            disabled={faucetLoading}
+            style={{ padding: '6px 10px', fontSize: 12, borderColor: '#7AA2F733', color: 'var(--warp-cyan)' }}
+          >
+            {faucetLoading ? 'Dripping...' : 'Request Faucet'}
+          </button>
           <button
             className="warp-btn border"
             onClick={fetchWalletDetails}

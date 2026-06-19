@@ -33,11 +33,34 @@ export function DeveloperWalletsCard() {
   const publicClient = usePublicClient()
   const [agents, setAgents] = useState<AgentWalletDetails[]>([])
   const [globalLoading, setGlobalLoading] = useState(false)
+  const [drippingMap, setDrippingMap] = useState<Record<string, boolean>>({})
 
   // Testing inputs
   const [testJobId, setTestJobId] = useState('')
   const [testResultHash, setTestResultHash] = useState('QmSimulatedResultHash')
   const [executingMap, setExecutingMap] = useState<Record<string, boolean>>({})
+
+  const handleRequestFaucet = async (address: string) => {
+    setDrippingMap(prev => ({ ...prev, [address]: true }))
+    try {
+      const res = await fetch('/api/faucet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message || 'Faucet drip requested!')
+        setTimeout(loadWallets, 5000)
+      } else {
+        toast.error(data.error || 'Faucet request failed')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to request faucet')
+    } finally {
+      setDrippingMap(prev => ({ ...prev, [address]: false }))
+    }
+  }
 
   // Load agents and their Circle wallets
   async function loadWallets() {
@@ -129,12 +152,7 @@ export function DeveloperWalletsCard() {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to create wallet')
       }
-      toast.success(
-        data.simulated
-          ? `Simulated wallet created for Agent #${agentId}!`
-          : `Circle wallet generated for Agent #${agentId}!`,
-        { id: tid }
-      )
+      toast.success(`Circle wallet generated for Agent #${agentId}!`, { id: tid })
       loadWallets()
     } catch (err: any) {
       toast.error(err.message || 'Creation failed', { id: tid })
@@ -290,14 +308,23 @@ export function DeveloperWalletsCard() {
                         <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--warp-warning)' }}>
                           {a.gasBalance} <span style={{ fontSize: 9, color: 'var(--warp-muted)' }}>USDC</span>
                         </span>
-                        <a
-                          href="https://faucet.arc.network/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontSize: 9, color: 'var(--warp-cyan)', textDecoration: 'underline', marginTop: 2 }}
+                        <button
+                          onClick={() => handleRequestFaucet(a.walletInfo!.address)}
+                          disabled={drippingMap[a.walletInfo!.address]}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--warp-cyan)',
+                            textDecoration: 'underline',
+                            fontSize: 9,
+                            cursor: 'pointer',
+                            padding: 0,
+                            textAlign: 'left',
+                            marginTop: 2
+                          }}
                         >
-                          Get Gas Faucet ↗
-                        </a>
+                          {drippingMap[a.walletInfo!.address] ? 'Dripping...' : 'Request Drip'}
+                        </button>
                       </div>
                     ) : '—'}
                   </td>

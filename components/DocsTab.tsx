@@ -1,11 +1,132 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FileText, Copy, Check, Terminal, Code2, ShieldAlert, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export function DocsTab() {
   const [copiedSection, setCopiedSection] = useState<string | null>(null)
+
+  // Webhooks State
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhooks, setWebhooks] = useState<any[]>([])
+  const [webhookLoading, setWebhookLoading] = useState(false)
+
+  // Monitored Tokens State
+  const [tokenId, setTokenId] = useState('')
+  const [tokens, setTokens] = useState<any[]>([])
+  const [tokensLoading, setTokensLoading] = useState(false)
+
+  const fetchWebhooks = async () => {
+    try {
+      const res = await fetch('/api/admin/webhooks')
+      const data = await res.json()
+      if (res.ok) {
+        setWebhooks(data.subscriptions || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch webhooks', err)
+    }
+  }
+
+  const createWebhook = async () => {
+    if (!webhookUrl) return
+    setWebhookLoading(true)
+    try {
+      const res = await fetch('/api/admin/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: webhookUrl })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success('Webhook subscription created!')
+        setWebhookUrl('')
+        fetchWebhooks()
+      } else {
+        toast.error(data.error || 'Failed to create subscription')
+      }
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  const deleteWebhook = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/webhooks?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success('Webhook subscription deleted!')
+        fetchWebhooks()
+      } else {
+        toast.error(data.error || 'Failed to delete subscription')
+      }
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  const fetchTokens = async () => {
+    try {
+      const res = await fetch('/api/admin/monitored-tokens')
+      const data = await res.json()
+      if (res.ok) {
+        setTokens(data.tokens || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch tokens', err)
+    }
+  }
+
+  const addToken = async () => {
+    if (!tokenId) return
+    setTokensLoading(true)
+    try {
+      const res = await fetch('/api/admin/monitored-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenIds: [tokenId] })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success('Token added to monitored list!')
+        setTokenId('')
+        fetchTokens()
+      } else {
+        toast.error(data.error || 'Failed to add token')
+      }
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setTokensLoading(false)
+    }
+  }
+
+  const removeToken = async (id: string) => {
+    try {
+      const res = await fetch('/api/admin/monitored-tokens', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenIds: [id] })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success('Token removed from monitored list!')
+        fetchTokens()
+      } else {
+        toast.error(data.error || 'Failed to remove token')
+      }
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  useEffect(() => {
+    fetchWebhooks()
+    fetchTokens()
+  }, [])
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -191,6 +312,147 @@ sdk.listen_for_jobs(
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Webhooks & Monitored Tokens Configuration (Postman Spec Alignment) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
+        
+        {/* Webhooks Manager */}
+        <div style={{ background: '#1A1B26', border: '1px solid #292E42', padding: 20, borderRadius: 8 }}>
+          <div style={{ color: 'var(--warp-cyan)', fontSize: 14, fontWeight: 'bold', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileText size={16} /> Circle Webhook Notifications
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--warp-muted)', marginBottom: 16 }}>
+            Create and manage SNS notification webhook endpoints to listen to programmable wallets events.
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input
+              type="text"
+              className="warp-input"
+              placeholder="https://example.com/webhook-handler"
+              value={webhookUrl}
+              onChange={e => setWebhookUrl(e.target.value)}
+              style={{ fontSize: 12, flex: 1 }}
+            />
+            <button
+              className="warp-btn"
+              onClick={createWebhook}
+              disabled={webhookLoading || !webhookUrl}
+              style={{ width: 'auto', padding: '0 16px', fontSize: 12 }}
+            >
+              {webhookLoading ? 'Subscribing...' : 'Subscribe'}
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #292E42', textAlign: 'left', color: 'var(--warp-muted)' }}>
+                  <th style={{ padding: '8px 4px' }}>Endpoint</th>
+                  <th style={{ padding: '8px 4px' }}>Created</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {webhooks.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ padding: '12px 4px', color: 'var(--warp-muted)', textAlign: 'center' }}>
+                      No active webhooks registered.
+                    </td>
+                  </tr>
+                ) : (
+                  webhooks.map(w => (
+                    <tr key={w.id} style={{ borderBottom: '1px solid #1f2335' }}>
+                      <td style={{ padding: '8px 4px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={w.endpoint}>
+                        {w.endpoint}
+                      </td>
+                      <td style={{ padding: '8px 4px', color: 'var(--warp-muted)' }}>
+                        {new Date(w.createDate).toLocaleDateString()}
+                      </td>
+                      <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => deleteWebhook(w.id)}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--warp-danger)', cursor: 'pointer', fontSize: 11 }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Monitored Tokens Manager */}
+        <div style={{ background: '#1A1B26', border: '1px solid #292E42', padding: 20, borderRadius: 8 }}>
+          <div style={{ color: 'var(--warp-magenta)', fontSize: 14, fontWeight: 'bold', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BookOpen size={16} /> Circle Monitored Tokens
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--warp-muted)', marginBottom: 16 }}>
+            Configure monitored tokens lists for your developer controlled entity scope.
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input
+              type="text"
+              className="warp-input"
+              placeholder="Enter Token UUID (e.g. USDC token id)"
+              value={tokenId}
+              onChange={e => setTokenId(e.target.value)}
+              style={{ fontSize: 12, flex: 1 }}
+            />
+            <button
+              className="warp-btn"
+              onClick={addToken}
+              disabled={tokensLoading || !tokenId}
+              style={{ width: 'auto', padding: '0 16px', fontSize: 12, background: 'var(--warp-magenta)' }}
+            >
+              {tokensLoading ? 'Adding...' : 'Monitor Token'}
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #292E42', textAlign: 'left', color: 'var(--warp-muted)' }}>
+                  <th style={{ padding: '8px 4px' }}>Symbol</th>
+                  <th style={{ padding: '8px 4px' }}>Name</th>
+                  <th style={{ padding: '8px 4px' }}>Blockchain</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '12px 4px', color: 'var(--warp-muted)', textAlign: 'center' }}>
+                      No custom monitored tokens (Scope: DEFAULT).
+                    </td>
+                  </tr>
+                ) : (
+                  tokens.map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #1f2335' }}>
+                      <td style={{ padding: '8px 4px', fontWeight: 600, color: 'var(--warp-magenta)' }}>{t.symbol}</td>
+                      <td style={{ padding: '8px 4px' }}>{t.name}</td>
+                      <td style={{ padding: '8px 4px', color: 'var(--warp-muted)' }}>{t.blockchain}</td>
+                      <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => removeToken(t.id)}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--warp-danger)', cursor: 'pointer', fontSize: 11 }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   )
