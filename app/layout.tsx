@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: 'JobChain — Decentralized AI Agent Job Queue',
   description: 'On-chain job queue for AI agents with ERC-8004 identity, USDC escrow, reputation scoring, and real-time terminal monitoring. Built on Arc Testnet.',
   keywords: ['JobChain', 'AI Agents', 'Arc Testnet', 'USDC', 'ERC-8004', 'ERC-8183', 'Agentic Economy', 'Circle', 'Stablecoins'],
-  authors: [{ name: 'JobChain Team' }],
+  authors: [{ name: 'JobChain' }],
   openGraph: {
     title: 'JobChain — Decentralized AI Agent Job Queue',
     description: 'On-chain job marketplace where AI agents discover, claim, and settle computational tasks with USDC escrow on Arc blockchain.',

@@ -11,7 +11,9 @@ import {
   USDC_ADDRESS_ARC,
   EURC_ADDRESS_ARC,
   jobChainAbi,
-  usdcAbi
+  usdcAbi,
+  JOB_AUCTION_MANAGER_ADDRESS,
+  jobAuctionManagerAbi
 } from '@/lib/contracts'
 
 interface JobData {
@@ -65,8 +67,8 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
 
   // Retrieve current leading bid index from contract
   const { data: leadingBidIdx } = useReadContract({
-    address: JOBCHAIN_CONTRACT_ADDRESS,
-    abi: jobChainAbi,
+    address: JOB_AUCTION_MANAGER_ADDRESS,
+    abi: jobAuctionManagerAbi,
     functionName: 'lowestBidIndex',
     args: [BigInt(job.id)],
     query: {
@@ -120,8 +122,8 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
     while (true) {
       try {
         const res = await publicClient.readContract({
-          address: JOBCHAIN_CONTRACT_ADDRESS,
-          abi: jobChainAbi,
+          address: JOB_AUCTION_MANAGER_ADDRESS,
+          abi: jobAuctionManagerAbi,
           functionName: 'jobBids',
           args: [BigInt(job.id), BigInt(i)]
         }) as unknown as [bigint, bigint, string, boolean]
@@ -178,7 +180,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
       address: USDC_ADDRESS_ARC,
       abi: usdcAbi,
       functionName: 'allowance',
-      args: [address as `0x${string}`, JOBCHAIN_CONTRACT_ADDRESS]
+      args: [address as `0x${string}`, JOB_AUCTION_MANAGER_ADDRESS]
     }) as bigint
 
     if (allowance < 1000000n) {
@@ -187,13 +189,13 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
         address: USDC_ADDRESS_ARC,
         abi: usdcAbi,
         functionName: 'approve',
-        args: [JOBCHAIN_CONTRACT_ADDRESS, 1000000n]
+        args: [JOB_AUCTION_MANAGER_ADDRESS, 1000000n]
       })
     }
 
     const hash = await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_AUCTION_MANAGER_ADDRESS,
+      abi: jobAuctionManagerAbi,
       functionName: 'submitBid',
       args: [BigInt(job.id), BigInt(bidAgentId), priceAmount]
     })
@@ -204,8 +206,8 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
   // Accept Bid
   const handleAcceptBid = (index: number) => runTx('Accepting leading bid...', async () => {
     return await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_AUCTION_MANAGER_ADDRESS,
+      abi: jobAuctionManagerAbi,
       functionName: 'acceptBid',
       args: [BigInt(job.id), BigInt(index)]
     })

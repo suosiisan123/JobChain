@@ -8,13 +8,18 @@ interface IERC20 {
 }
 
 interface IJobChainV2 {
-    function postJobFromScheduler(
+    enum AuctionType { Fixed, Bid, Dutch }
+    function postJobFromManager(
         address _poster,
         string calldata _description,
         string calldata _requiredCapabilities,
         uint256 _reward,
         uint256 _deadline,
-        address _paymentToken
+        address _paymentToken,
+        AuctionType _auctionType,
+        uint256 _startPrice,
+        uint256 _floorPrice,
+        uint256 _decayPeriod
     ) external returns (uint256);
 }
 
@@ -113,13 +118,17 @@ contract JobScheduler {
         IERC20(s.paymentToken).approve(jobChain, jobReward);
 
         // Call JobChain to spawn the job
-        uint256 jobId = IJobChainV2(jobChain).postJobFromScheduler(
+        uint256 jobId = IJobChainV2(jobChain).postJobFromManager(
             s.poster,
             s.description,
             s.requiredCapabilities,
             jobReward,
             block.timestamp + 24 hours,
-            s.paymentToken
+            s.paymentToken,
+            IJobChainV2.AuctionType.Fixed,
+            jobReward,
+            jobReward,
+            0
         );
 
         emit ScheduleExecuted(_scheduleId, jobId, s.executionsCount, keeperReward);

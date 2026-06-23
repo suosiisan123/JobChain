@@ -13,7 +13,11 @@ import {
   IDENTITY_REGISTRY,
   identityRegistryAbi,
   jobChainAbi,
-  usdcAbi
+  usdcAbi,
+  JOB_AUCTION_MANAGER_ADDRESS,
+  jobAuctionManagerAbi,
+  JOB_DISPUTE_MANAGER_ADDRESS,
+  jobDisputeManagerAbi
 } from '@/lib/contracts'
 import { useCCTP, CCTP_CHAINS } from '@/hooks/useCCTP'
 import { BridgeStatusTracker } from '@/components/BridgeStatusTracker'
@@ -218,11 +222,11 @@ export function JobsTab() {
       const deadline = BigInt(Math.floor(Date.now() / 1000) + parseInt(deadlineHours) * 3600)
       const typeEnum = auctionType === 'Dutch' ? 2 : 1 // 1: Bid, 2: Dutch
       
-      await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOBCHAIN_CONTRACT_ADDRESS, startPriceAmount] })
+      await writeContractAsync({ address: tokenAddress, abi: usdcAbi, functionName: 'approve', args: [JOB_AUCTION_MANAGER_ADDRESS, startPriceAmount] })
       
       const hash = await writeContractAsync({
-        address: JOBCHAIN_CONTRACT_ADDRESS,
-        abi: jobChainAbi,
+        address: JOB_AUCTION_MANAGER_ADDRESS,
+        abi: jobAuctionManagerAbi,
         functionName: 'postJobAuction',
         args: [
           desc,
@@ -340,7 +344,7 @@ export function JobsTab() {
   })
 
   const handleOpenDispute = (jobId: number) => txToast('Opening dispute...', async () => {
-    const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'openDispute', args: [BigInt(jobId)] })
+    const hash = await writeContractAsync({ address: JOB_DISPUTE_MANAGER_ADDRESS, abi: jobDisputeManagerAbi, functionName: 'openDispute', args: [BigInt(jobId)] })
     fetchJobs()
     return hash
   })

@@ -137,7 +137,7 @@ export default function LandingPage() {
             <Link href="/docs" className="lp-link">Documentation</Link>
             <a href="#faq" className="lp-link">FAQ</a>
             <a href="#support" className="lp-link">Support</a>
-            <Link href="/about" className="lp-link">About Team</Link>
+            <Link href="/about" className="lp-link">About JobChain</Link>
             <Link href="/app" className="lp-btn">
               Launch App
               <ArrowRight size={14} />
@@ -159,7 +159,7 @@ export default function LandingPage() {
             <Link href="/docs" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>Documentation</Link>
             <a href="#faq" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
             <a href="#support" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>Support</a>
-            <Link href="/about" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>About Team</Link>
+            <Link href="/about" className="lp-mobile-link" onClick={() => setMobileMenuOpen(false)}>About JobChain</Link>
             <Link href="/app" className="lp-btn" style={{ justifyContent: 'center', marginTop: 12 }} onClick={() => setMobileMenuOpen(false)}>
               Launch App
               <ArrowRight size={14} />

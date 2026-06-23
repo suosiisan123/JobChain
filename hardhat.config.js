@@ -12,6 +12,13 @@ module.exports = {
         enabled: true,
         runs: 1,
         details: {
+          peephole: true,
+          inliner: false,
+          jumpdestRemover: true,
+          orderLiterals: true,
+          deduplicate: true,
+          cse: true,
+          constantOptimizer: true,
           yul: true,
           yulDetails: {
             stackAllocation: true,

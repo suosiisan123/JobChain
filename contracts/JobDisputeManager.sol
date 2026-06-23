@@ -10,8 +10,7 @@ interface IJobChainV2 {
     enum AuctionType { Fixed, Bid, Dutch }
 
     function setStatusFromManager(uint256 _jobId, JobStatus _status) external;
-    function resolveDisputeAgentWins(uint256 _jobId, address[] calldata _voters) external;
-    function resolveDisputePosterWins(uint256 _jobId, address[] calldata _voters) external;
+    function resolveDisputeFromManager(uint256 _jobId, bool _agentWins, address[] calldata _voters) external;
 
     function getJobAuctionDetails(uint256 _jobId) external view returns (
         address poster,
@@ -135,13 +134,9 @@ contract JobDisputeManager {
             voters[i] = IIdentityRegistry(identityReg).ownerOf(disputeVoters[_jobId][i]);
         }
 
-        if (d.approveWeight > d.rejectWeight) {
-            IJobChainV2(jobChain).resolveDisputeAgentWins(_jobId, voters);
-            emit DisputeResolved(_jobId, true, d.approveWeight, d.rejectWeight);
-        } else {
-            IJobChainV2(jobChain).resolveDisputePosterWins(_jobId, voters);
-            emit DisputeResolved(_jobId, false, d.approveWeight, d.rejectWeight);
-        }
+        bool agentWins = d.approveWeight > d.rejectWeight;
+        IJobChainV2(jobChain).resolveDisputeFromManager(_jobId, agentWins, voters);
+        emit DisputeResolved(_jobId, agentWins, d.approveWeight, d.rejectWeight);
     }
 
     function isEligibleValidator(uint256 _agentId) public view returns (bool) {

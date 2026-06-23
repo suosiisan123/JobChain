@@ -171,7 +171,6 @@ contract JobChainV2 {
 
 
     // ── Protocol Treasury ──
-    uint256 public protocolFees; // Legacy USDC accumulated fees
     mapping(address => uint256) public protocolTokenFees; // Token -> fee balance
     uint256 public PROTOCOL_FEE_BPS = 250; // 2.5% (made mutable by DAO)
     uint256 public constant MIN_STAKE = 1e6; // 1 USDC (6 decimals)
@@ -230,27 +229,36 @@ contract JobChainV2 {
         owner = msg.sender;
     }
 
-    // ── Setter for Verifier address ──
-    function setVerifier(address _verifier) external {
+    // ── Owner & DAO Address Administration ──
+    function setSystemAddresses(
+        address _verifier,
+        address _stableFX,
+        address _yieldPool,
+        address _revenueDistributor
+    ) external {
         if (msg.sender != owner) revert OnlyOwner();
-        verifier = _verifier;
-    }
-
-    // ── Setter for StableFX address ──
-    function setStableFX(address _stableFX) external {
-        if (msg.sender != owner) revert OnlyOwner();
-        stableFX = _stableFX;
-    }
-
-    // ── Setter for YieldPool address ──
-    function setYieldPool(address _yieldPool) external {
-        if (msg.sender != owner) revert OnlyOwner();
-        yieldPool = _yieldPool;
+        if (_verifier != address(0)) verifier = _verifier;
+        if (_stableFX != address(0)) stableFX = _stableFX;
+        if (_yieldPool != address(0)) yieldPool = _yieldPool;
+        if (_revenueDistributor != address(0)) revenueDistributor = _revenueDistributor;
     }
 
     // ── Helper conversion to USDC ──
     function _convertToUSDC(uint256 amount) internal pure returns (uint256) {
         return (amount * 108) / 100;
+    }
+
+    function _depositToPool(address token, uint256 amount) internal returns (uint256 rate, bool success) {
+        if (yieldPool != address(0) && amount > 0) {
+            try IERC20(token).approve(yieldPool, amount) {} catch {}
+            try IMockYieldPool(yieldPool).deposit(token, amount) returns (bool ok) {
+                if (ok) {
+                    rate = IMockYieldPool(yieldPool).getExchangeRate(token);
+                    success = true;
+                    yieldTVL += (token == address(usdc) ? amount : _convertToUSDC(amount));
+                }
+            } catch {}
+        }
     }
 
     // ── Helper withdrawal from YieldPool ──
@@ -352,7 +360,6 @@ contract JobChainV2 {
         if (slashAmount > 0) {
             a.stakedAmount -= slashAmount;
             protocolTokenFees[address(usdc)] += slashAmount;
-            protocolFees += slashAmount;
             emit AgentSlashed(agentId, slashAmount, reason);
         }
         if (a.stakedAmount < MIN_STAKE) {
@@ -379,15 +386,7 @@ contract JobChainV2 {
         }
         a.stakedAmount += _amount;
 
-        // Try depositing to YieldPool
-        if (yieldPool != address(0)) {
-            usdc.approve(yieldPool, _amount);
-            try IMockYieldPool(yieldPool).deposit(address(usdc), _amount) returns (bool success) {
-                if (success) {
-                    yieldTVL += _amount;
-                }
-            } catch {}
-        }
+        _depositToPool(address(usdc), _amount);
         emit AgentStaked(_agentId, _amount, a.stakedAmount);
     }
     function _postJobInternal(
@@ -407,18 +406,7 @@ contract JobChainV2 {
         uint256 rate = 0;
         bool deposited = false;
 
-        // Try depositing to YieldPool
-        if (yieldPool != address(0) && _reward > 0) {
-            try IERC20(_paymentToken).approve(yieldPool, _reward) {} catch {}
-            try IMockYieldPool(yieldPool).deposit(_paymentToken, _reward) returns (bool success) {
-                if (success) {
-                    rate = IMockYieldPool(yieldPool).getExchangeRate(_paymentToken);
-                    deposited = true;
-                    uint256 usdcEquivalent = _paymentToken == address(usdc) ? _reward : _convertToUSDC(_reward);
-                    yieldTVL += usdcEquivalent;
-                }
-            } catch {}
-        }
+        (rate, deposited) = _depositToPool(_paymentToken, _reward);
 
         uint256 id = nextJobId++;
         jobs[id] = Job({
@@ -726,6 +714,44 @@ contract JobChainV2 {
         emit ResultSubmitted(_jobId, j.assignedAgent, _resultHash);
     }
 
+    function _distributeCompletedPayouts(
+        uint256 _jobId,
+        uint256 _reward,
+        uint256 _rewardYield,
+        uint256 _stakeYield,
+        int128 _feedbackScore,
+        string memory _feedbackTag,
+        string memory _feedbackComment
+    ) internal {
+        Job storage j = jobs[_jobId];
+
+        // Split rewardYield: 50% Agent, 30% Poster, 20% Protocol
+        uint256 agentRewardShare = (_rewardYield * 50) / 100;
+        uint256 posterRewardShare = (_rewardYield * 30) / 100;
+        uint256 protocolRewardShare = _rewardYield - agentRewardShare - posterRewardShare;
+
+        // Split stakeYield: 50% Agent, 30% Poster, 20% Protocol
+        uint256 agentStakeShare = (_stakeYield * 50) / 100;
+        uint256 posterStakeShare = (_stakeYield * 30) / 100;
+        uint256 protocolStakeShare = _stakeYield - agentStakeShare - posterStakeShare;
+
+        uint256 protocolFee = (_reward * PROTOCOL_FEE_BPS) / 10000;
+        uint256 finalPayout = _reward - protocolFee + agentRewardShare;
+
+        protocolTokenFees[j.paymentToken] += (protocolFee + protocolRewardShare);
+        protocolTokenFees[address(usdc)] += protocolStakeShare;
+
+        if (posterRewardShare > 0) {
+            if (!IERC20(j.paymentToken).transfer(j.poster, posterRewardShare)) revert TransferFailed();
+        }
+        if (posterStakeShare > 0) {
+            if (!usdc.transfer(j.poster, posterStakeShare)) revert TransferFailed();
+        }
+
+        _payoutAgent(_jobId, finalPayout, agentStakeShare, _feedbackScore, _feedbackTag, _feedbackComment);
+        emit YieldDistributed(_jobId, agentRewardShare + agentStakeShare, posterRewardShare + posterStakeShare, protocolRewardShare + protocolStakeShare);
+    }
+
     function approveAndRelease(uint256 _jobId, uint8 _rating) external {
         Job storage j = jobs[_jobId];
         if (j.poster != msg.sender) revert NotPoster();
@@ -738,58 +764,23 @@ contract JobChainV2 {
             if (jobs[children[i]].status != JobStatus.Completed) revert ChildJobsNotCompleted();
         }
 
-        Agent storage a = agents[j.assignedAgent];
-
         (uint256 rewardYield, uint256 stakeYield) = _calculateYield(_jobId);
-
-        // Split rewardYield: 50% Agent, 30% Poster, 20% Protocol
-        uint256 agentRewardShare = (rewardYield * 50) / 100;
-        uint256 posterRewardShare = (rewardYield * 30) / 100;
-        uint256 protocolRewardShare = rewardYield - agentRewardShare - posterRewardShare;
-
-        // Split stakeYield: 50% Agent, 30% Poster, 20% Protocol
-        uint256 agentStakeShare = (stakeYield * 50) / 100;
-        uint256 posterStakeShare = (stakeYield * 30) / 100;
-        uint256 protocolStakeShare = stakeYield - agentStakeShare - posterStakeShare;
-
         _withdrawRewardYield(_jobId, rewardYield);
         _withdrawStakeYield(_jobId, stakeYield);
-
-        // 1. Calculate fee in the source token
-        uint256 fee = (j.reward * PROTOCOL_FEE_BPS) / 10000;
-        uint256 payoutInSource = j.reward - fee + agentRewardShare;
-        protocolTokenFees[j.paymentToken] += (fee + protocolRewardShare);
-        if (j.paymentToken == address(usdc)) {
-            protocolFees += (fee + protocolRewardShare);
-        }
-
-        // Add protocol stake yield share
-        protocolTokenFees[address(usdc)] += protocolStakeShare;
-        if (address(usdc) == address(usdc)) {
-            protocolFees += protocolStakeShare;
-        }
-
-        // Refund poster's share of yield
-        if (posterRewardShare > 0) {
-            if (!IERC20(j.paymentToken).transfer(j.poster, posterRewardShare)) revert TransferFailed();
-        }
-        if (posterStakeShare > 0) {
-            if (!usdc.transfer(j.poster, posterStakeShare)) revert TransferFailed();
-        }
 
         // Update job
         j.status = JobStatus.Completed;
         j.rating = _rating;
 
         // Update agent reputation
+        Agent storage a = agents[j.assignedAgent];
         a.completedJobs++;
         a.totalScore += _rating;
 
         int128 feedbackScore = int128(int256((uint256(_rating) - 1) * 25)); // 1-5 mapped to 0-100
-        _payoutAgent(_jobId, payoutInSource, agentStakeShare, feedbackScore, "successful_job", "Job completed successfully");
+        _distributeCompletedPayouts(_jobId, j.reward, rewardYield, stakeYield, feedbackScore, "successful_job", "Job completed successfully");
 
         emit JobApproved(_jobId, _rating);
-        emit YieldDistributed(_jobId, agentRewardShare + agentStakeShare, posterRewardShare + posterStakeShare, protocolRewardShare + protocolStakeShare);
     }
 
     function failJob(uint256 _jobId, string calldata _reason) external {
@@ -818,9 +809,6 @@ contract JobChainV2 {
         uint256 protocolShare = rewardYield - posterShare;
 
         protocolTokenFees[j.paymentToken] += protocolShare;
-        if (j.paymentToken == address(usdc)) {
-            protocolFees += protocolShare;
-        }
 
         _slashAgent(j.assignedAgent, "Job failed finalization");
 
@@ -878,105 +866,60 @@ contract JobChainV2 {
         }
     }
 
-    function resolveDisputeAgentWins(
+    function resolveDisputeFromManager(
         uint256 _jobId,
+        bool _agentWins,
         address[] calldata _voters
     ) external onlyManager {
         Job storage j = jobs[_jobId];
         if (j.status != JobStatus.Disputed) revert JobNotDisputed();
-
-        j.status = JobStatus.Completed;
-        Agent storage a = agents[j.assignedAgent];
-        a.completedJobs++;
-        a.totalScore += 5; // Default 5 rating for successful dispute defense
 
         (uint256 rewardYield, uint256 stakeYield) = _calculateYield(_jobId);
         _withdrawRewardYield(_jobId, rewardYield);
-        _withdrawStakeYield(_jobId, stakeYield);
 
         uint256 validatorFee = j.reward / 100;
         uint256 rewardAfterVoterFee = j.reward - validatorFee;
 
         _distributeVoterFees(j.paymentToken, validatorFee, _voters);
 
-        // Split rewardYield: 50% Agent, 30% Poster, 20% Protocol
-        uint256 agentRewardShare = (rewardYield * 50) / 100;
-        uint256 posterRewardShare = (rewardYield * 30) / 100;
-        uint256 protocolRewardShare = rewardYield - agentRewardShare - posterRewardShare;
+        if (_agentWins) {
+            j.status = JobStatus.Completed;
+            Agent storage a = agents[j.assignedAgent];
+            a.completedJobs++;
+            a.totalScore += 5; // Default 5 rating for successful dispute defense
 
-        // Split stakeYield: 50% Agent, 30% Poster, 20% Protocol
-        uint256 agentStakeShare = (stakeYield * 50) / 100;
-        uint256 posterStakeShare = (stakeYield * 30) / 100;
-        uint256 protocolStakeShare = stakeYield - agentStakeShare - posterStakeShare;
+            _withdrawStakeYield(_jobId, stakeYield);
 
-        uint256 protocolFee = (rewardAfterVoterFee * PROTOCOL_FEE_BPS) / 10000;
-        uint256 finalPayout = rewardAfterVoterFee - protocolFee + agentRewardShare;
-        protocolTokenFees[j.paymentToken] += (protocolFee + protocolRewardShare);
-        if (j.paymentToken == address(usdc)) {
-            protocolFees += (protocolFee + protocolRewardShare);
+            _distributeCompletedPayouts(_jobId, rewardAfterVoterFee, rewardYield, stakeYield, 100, "dispute_won", "Dispute resolved in favor of agent");
+        } else {
+            j.status = JobStatus.Failed;
+
+            // Split rewardYield: 80% Poster, 20% Protocol, 0% Agent
+            uint256 posterShare = (rewardYield * 80) / 100;
+            uint256 protocolShare = rewardYield - posterShare;
+
+            protocolTokenFees[j.paymentToken] += protocolShare;
+
+            _slashAgent(j.assignedAgent, "Dispute lost");
+
+            // Refund poster remaining reward + poster's share of yield
+            if (!IERC20(j.paymentToken).transfer(j.poster, rewardAfterVoterFee + posterShare)) revert TransferFailed();
+
+            // Feedback (reputation slash)
+            bytes32 refHash = keccak256(abi.encodePacked("dispute_lost", _jobId));
+            try reputationRegistry.giveFeedback(
+                j.assignedAgent,
+                -75,
+                0,
+                "dispute_lost",
+                "Dispute resolved in favor of poster",
+                "",
+                "",
+                refHash
+            ) {} catch {}
+
+            emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
         }
-
-        protocolTokenFees[address(usdc)] += protocolStakeShare;
-        if (address(usdc) == address(usdc)) {
-            protocolFees += protocolStakeShare;
-        }
-
-        if (posterRewardShare > 0) {
-            if (!IERC20(j.paymentToken).transfer(j.poster, posterRewardShare)) revert TransferFailed();
-        }
-        if (posterStakeShare > 0) {
-            if (!usdc.transfer(j.poster, posterStakeShare)) revert TransferFailed();
-        }
-
-        _payoutAgent(_jobId, finalPayout, agentStakeShare, 100, "dispute_won", "Dispute resolved in favor of agent");
-        emit YieldDistributed(_jobId, agentRewardShare + agentStakeShare, posterRewardShare + posterStakeShare, protocolRewardShare + protocolStakeShare);
-    }
-
-    function resolveDisputePosterWins(
-        uint256 _jobId,
-        address[] calldata _voters
-    ) external onlyManager {
-        Job storage j = jobs[_jobId];
-        if (j.status != JobStatus.Disputed) revert JobNotDisputed();
-
-        j.status = JobStatus.Failed;
-
-        (uint256 rewardYield, ) = _calculateYield(_jobId);
-        _withdrawRewardYield(_jobId, rewardYield);
-
-        uint256 validatorFee = j.reward / 100;
-        uint256 rewardAfterVoterFee = j.reward - validatorFee;
-
-        _distributeVoterFees(j.paymentToken, validatorFee, _voters);
-
-        // Split rewardYield: 80% Poster, 20% Protocol, 0% Agent
-        uint256 posterShare = (rewardYield * 80) / 100;
-        uint256 protocolShare = rewardYield - posterShare;
-
-        protocolTokenFees[j.paymentToken] += protocolShare;
-        if (j.paymentToken == address(usdc)) {
-            protocolFees += protocolShare;
-        }
-
-        _slashAgent(j.assignedAgent, "Dispute lost");
-
-        // Refund poster remaining reward + poster's share of yield
-        if (!IERC20(j.paymentToken).transfer(j.poster, rewardAfterVoterFee + posterShare)) revert TransferFailed();
-
-        // Feedback (reputation slash)
-        bytes32 refHash = keccak256(abi.encodePacked("dispute_lost", _jobId));
-        try reputationRegistry.giveFeedback(
-            j.assignedAgent,
-            -75,
-            0,
-            "dispute_lost",
-            "Dispute resolved in favor of poster",
-            "",
-            "",
-            refHash
-        ) {} catch {}
-
-        emit YieldDistributed(_jobId, 0, posterShare, protocolShare);
     }
 
     function cancelJob(uint256 _jobId) external {
@@ -994,9 +937,6 @@ contract JobChainV2 {
         uint256 protocolShare = rewardYield - posterShare;
 
         protocolTokenFees[j.paymentToken] += protocolShare;
-        if (j.paymentToken == address(usdc)) {
-            protocolFees += protocolShare;
-        }
 
         // Refund poster or return to parent reward pool
         if (j.hasParent) {
@@ -1079,14 +1019,10 @@ contract JobChainV2 {
 
     // ── Owner & DAO Functions ──
 
-    function setRevenueDistributor(address _revenueDistributor) external {
-        if (msg.sender != owner) revert OnlyOwner();
-        revenueDistributor = _revenueDistributor;
-    }
+    // setRevenueDistributor functionality merged into setSystemAddresses
 
     function setProtocolFeeBps(uint256 _bps) external {
-        if (msg.sender != revenueDistributor) revert OnlyRevenueDistributor();
-        if (_bps > 1000) revert MaxFeeLimitExceeded();
+        if (msg.sender != revenueDistributor || _bps > 1000) revert InvalidAmount();
         PROTOCOL_FEE_BPS = _bps;
     }
 
@@ -1097,9 +1033,7 @@ contract JobChainV2 {
     function withdrawTokenFees(address _token) public {
         uint256 amount = protocolTokenFees[_token];
         protocolTokenFees[_token] = 0;
-        if (_token == address(usdc)) {
-            protocolFees = 0;
-        }
+        // Protocol fees are queryable via view function
 
         _withdrawFromPool(_token, amount);
 
@@ -1108,5 +1042,7 @@ contract JobChainV2 {
 
     // ── Scheduler Contract Integration ──
 
-
+    function protocolFees() external view returns (uint256) {
+        return protocolTokenFees[address(usdc)];
+    }
 }

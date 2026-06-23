@@ -2,11 +2,13 @@
 // JobChain V2 — Contract Configuration
 // ═══════════════════════════════════════════════════════════════
 
-// TODO: Update after deploying with `npx hardhat run scripts/deploy.ts --network arcTestnet`
-export const JOBCHAIN_CONTRACT_ADDRESS = "0x06bdC5FC3A02Cb00df43cdf581fe038dFeFF58DE" as `0x${string}`;
-export const ZK_VERIFIER_CONTRACT_ADDRESS = "0x98A1234567890abcdef1234567890abcdef12345" as `0x${string}`;
-export const JOB_TOKEN_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as `0x${string}`;
-export const REVENUE_DISTRIBUTOR_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" as `0x${string}`;
+export const JOBCHAIN_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_JOBCHAIN_CONTRACT_ADDRESS || "0x67A58ae49B4B240028dB40ff32BFA8A7c4488A31") as `0x${string}`;
+export const JOB_AUCTION_MANAGER_ADDRESS = (process.env.NEXT_PUBLIC_JOB_AUCTION_MANAGER_ADDRESS || "0x5f20087fD9A42dea37B1f048e7355949E8BA04Db") as `0x${string}`;
+export const JOB_DISPUTE_MANAGER_ADDRESS = (process.env.NEXT_PUBLIC_JOB_DISPUTE_MANAGER_ADDRESS || "0x1626503FB7FA2EDe51A18e7e7BF389E5166df433") as `0x${string}`;
+export const JOB_SCHEDULER_ADDRESS = (process.env.NEXT_PUBLIC_JOB_SCHEDULER_ADDRESS || "0xEaDb64C2AA524E59fF42Ee641391b8B3f02F5B6c") as `0x${string}`;
+export const JOB_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_JOB_TOKEN_ADDRESS || "0x451B6422d7B709F96230adc22Ef7B5698422e93e") as `0x${string}`;
+export const REVENUE_DISTRIBUTOR_ADDRESS = (process.env.NEXT_PUBLIC_REVENUE_DISTRIBUTOR_ADDRESS || "0x0C69096588defe03BF2393bC3a4D3e7b460EF270") as `0x${string}`;
+export const ZK_VERIFIER_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ZK_VERIFIER_CONTRACT_ADDRESS || "0x8976767E1d52e513Fc2E61b633Ad94a2D1eec4bE") as `0x${string}`;
 
 export const USDC_ADDRESS_ARC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
 export const EURC_ADDRESS_ARC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" as `0x${string}`;
@@ -842,6 +844,431 @@ export const revenueDistributorAbi = [
     name: "getHasVoted",
     outputs: [{ name: "", type: "bool" }],
     stateMutability: "view",
+    type: "function"
+  }
+] as const;
+
+export const jobAuctionManagerAbi = [
+  {
+    inputs: [{ name: "_jobChain", type: "address" }],
+    stateMutability: "nonpayable",
+    type: "constructor"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "price", type: "uint256" }
+    ],
+    name: "BidAccepted",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "price", type: "uint256" },
+      { indexed: true, name: "bidder", type: "address" }
+    ],
+    name: "BidSubmitted",
+    type: "event"
+  },
+  {
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_bidIndex", type: "uint256" }
+    ],
+    name: "acceptBid",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "getBidsLength",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "", type: "uint256" },
+      { name: "", type: "uint256" }
+    ],
+    name: "jobBids",
+    outputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "price", type: "uint256" },
+      { name: "bidder", type: "address" },
+      { name: "refunded", type: "bool" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "jobChain",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "", type: "uint256" }],
+    name: "lowestBidIndex",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "owner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_description", type: "string" },
+      { name: "_requiredCapabilities", type: "string" },
+      { name: "_deadline", type: "uint256" },
+      { name: "_paymentToken", type: "address" },
+      { name: "_auctionType", type: "uint8" },
+      { name: "_startPrice", type: "uint256" },
+      { name: "_floorPrice", type: "uint256" },
+      { name: "_decayPeriod", type: "uint256" }
+    ],
+    name: "postJobAuction",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_agentId", type: "uint256" },
+      { name: "_price", type: "uint256" }
+    ],
+    name: "submitBid",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+] as const;
+
+export const jobDisputeManagerAbi = [
+  {
+    inputs: [{ name: "_jobChain", type: "address" }],
+    stateMutability: "nonpayable",
+    type: "constructor"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "opener", type: "address" }
+    ],
+    name: "DisputeOpened",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "voter", type: "address" },
+      { indexed: false, name: "supportAgent", type: "bool" },
+      { indexed: false, name: "weight", type: "uint256" }
+    ],
+    name: "DisputeVoteCast",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: false, name: "resolvedInFavorOfAgent", type: "bool" },
+      { indexed: false, name: "approveWeight", type: "uint256" },
+      { indexed: false, name: "rejectWeight", type: "uint256" }
+    ],
+    name: "DisputeResolved",
+    type: "event"
+  },
+  {
+    inputs: [
+      { name: "_jobId", type: "uint256" },
+      { name: "_agentId", type: "uint256" },
+      { name: "_supportAgent", type: "bool" }
+    ],
+    name: "castVote",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "", type: "uint256" },
+      { name: "", type: "uint256" }
+    ],
+    name: "disputeVoters",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "", type: "uint256" }],
+    name: "disputes",
+    outputs: [
+      { name: "disputedAt", type: "uint256" },
+      { name: "approveWeight", type: "uint256" },
+      { name: "rejectWeight", type: "uint256" },
+      { name: "resolved", type: "bool" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "getDispute",
+    outputs: [
+      { name: "disputedAt", type: "uint256" },
+      { name: "approveWeight", type: "uint256" },
+      { name: "rejectWeight", type: "uint256" },
+      { name: "resolved", type: "bool" },
+      { name: "voterCount", type: "uint256" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "", type: "uint256" },
+      { name: "", type: "uint256" }
+    ],
+    name: "hasVoted",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_agentId", type: "uint256" }],
+    name: "isEligibleValidator",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "jobChain",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "openDispute",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "owner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_jobId", type: "uint256" }],
+    name: "resolveDispute",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+] as const;
+
+export const jobSchedulerAbi = [
+  {
+    inputs: [
+      { name: "_jobChain", type: "address" },
+      { name: "_usdc", type: "address" },
+      { name: "_eurc", type: "address" }
+    ],
+    stateMutability: "nonpayable",
+    type: "constructor"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "scheduleId", type: "uint256" },
+      { indexed: false, name: "refundAmount", type: "uint256" }
+    ],
+    name: "ScheduleCancelled",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "scheduleId", type: "uint256" },
+      { indexed: true, name: "jobId", type: "uint256" },
+      { indexed: false, name: "executionCount", type: "uint256" },
+      { indexed: false, name: "keeperReward", type: "uint256" }
+    ],
+    name: "ScheduleExecuted",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "scheduleId", type: "uint256" },
+      { indexed: true, name: "poster", type: "address" },
+      { indexed: false, name: "interval", type: "uint256" },
+      { indexed: false, name: "reward", type: "uint256" },
+      { indexed: false, name: "totalBudget", type: "uint256" }
+    ],
+    name: "ScheduleRegistered",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "scheduleId", type: "uint256" },
+      { indexed: false, name: "amountAdded", type: "uint256" }
+    ],
+    name: "ScheduleReplenished",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "scheduleId", type: "uint256" },
+      { indexed: false, name: "amountWithdrawn", type: "uint256" }
+    ],
+    name: "ScheduleWithdrawn",
+    type: "event"
+  },
+  {
+    inputs: [{ name: "_scheduleId", type: "uint256" }],
+    name: "cancelSchedule",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "eurc",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_scheduleId", type: "uint256" }],
+    name: "executeScheduledJob",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "_scheduleId", type: "uint256" }],
+    name: "getSchedule",
+    outputs: [
+      { name: "poster", type: "address" },
+      { name: "description", type: "string" },
+      { name: "requiredCapabilities", type: "string" },
+      { name: "reward", type: "uint256" },
+      { name: "interval", type: "uint256" },
+      { name: "nextExecution", type: "uint256" },
+      { name: "fundedBalance", type: "uint256" },
+      { name: "maxExecutions", type: "uint256" },
+      { name: "executionsCount", type: "uint256" },
+      { name: "paymentToken", type: "address" },
+      { name: "active", type: "bool" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "jobChain",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "nextScheduleId",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "owner",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_desc", type: "string" },
+      { name: "_requiredCapabilities", type: "string" },
+      { name: "_interval", type: "uint256" },
+      { name: "_reward", type: "uint256" },
+      { name: "_maxExecutions", type: "uint256" },
+      { name: "_paymentToken", type: "address" }
+    ],
+    name: "registerSchedule",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_scheduleId", type: "uint256" },
+      { name: "_amount", type: "uint256" }
+    ],
+    name: "replenishSchedule",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ name: "", type: "uint256" }],
+    name: "schedules",
+    outputs: [
+      { name: "id", type: "uint256" },
+      { name: "poster", type: "address" },
+      { name: "description", type: "string" },
+      { name: "requiredCapabilities", type: "string" },
+      { name: "reward", type: "uint256" },
+      { name: "interval", type: "uint256" },
+      { name: "nextExecution", type: "uint256" },
+      { name: "fundedBalance", type: "uint256" },
+      { name: "maxExecutions", type: "uint256" },
+      { name: "executionsCount", type: "uint256" },
+      { name: "paymentToken", type: "address" },
+      { name: "active", type: "bool" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [],
+    name: "usdc",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "_scheduleId", type: "uint256" },
+      { name: "_amount", type: "uint256" }
+    ],
+    name: "withdrawSchedule",
+    outputs: [],
+    stateMutability: "nonpayable",
     type: "function"
   }
 ] as const;

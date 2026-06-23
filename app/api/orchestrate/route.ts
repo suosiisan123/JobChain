@@ -36,16 +36,20 @@ export async function POST(req: NextRequest) {
     let subtasks: { description: string; requiredCapabilities: string; reward: string }[] = []
 
     const openAiKey = process.env.OPENAI_API_KEY
-    if (openAiKey) {
+    const deepseekKey = process.env.DEEPSEEK_API_KEY
+    if (deepseekKey || openAiKey) {
       try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const url = deepseekKey ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+        const key = deepseekKey || openAiKey
+        const model = deepseekKey ? 'deepseek-v4-flash' : 'gpt-4o-mini'
+        const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiKey}`
+            'Authorization': `Bearer ${key}`
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: model,
             messages: [
               {
                 role: 'system',

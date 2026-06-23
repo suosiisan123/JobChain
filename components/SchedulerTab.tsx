@@ -7,10 +7,10 @@ import { Calendar, Play, RefreshCw, XCircle, Plus, Minus, DollarSign, Clock } fr
 import toast from 'react-hot-toast'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
-  JOBCHAIN_CONTRACT_ADDRESS,
+  JOB_SCHEDULER_ADDRESS,
   USDC_ADDRESS_ARC,
   EURC_ADDRESS_ARC,
-  jobChainAbi,
+  jobSchedulerAbi,
   usdcAbi
 } from '@/lib/contracts'
 
@@ -49,8 +49,8 @@ export function SchedulerTab() {
 
   // Read count of schedules from contract
   const { data: nextScheduleId, refetch: refetchNextScheduleId } = useReadContract({
-    address: JOBCHAIN_CONTRACT_ADDRESS,
-    abi: jobChainAbi,
+    address: JOB_SCHEDULER_ADDRESS,
+    abi: jobSchedulerAbi,
     functionName: 'nextScheduleId',
   })
 
@@ -61,8 +61,8 @@ export function SchedulerTab() {
     for (let i = 0; i < count; i++) {
       try {
         const d = await publicClient.readContract({
-          address: JOBCHAIN_CONTRACT_ADDRESS,
-          abi: jobChainAbi,
+          address: JOB_SCHEDULER_ADDRESS,
+          abi: jobSchedulerAbi,
           functionName: 'getSchedule',
           args: [BigInt(i)],
         }) as unknown as any[]
@@ -122,13 +122,13 @@ export function SchedulerTab() {
       address: tokenAddress,
       abi: usdcAbi,
       functionName: 'approve',
-      args: [JOBCHAIN_CONTRACT_ADDRESS, totalBudget]
+      args: [JOB_SCHEDULER_ADDRESS, totalBudget]
     })
 
     // Register schedule
     const hash = await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_SCHEDULER_ADDRESS,
+      abi: jobSchedulerAbi,
       functionName: 'registerSchedule',
       args: [desc, skills, intervalVal, rewardVal, executionsVal, tokenAddress]
     })
@@ -141,8 +141,8 @@ export function SchedulerTab() {
 
   const handleExecuteSchedule = (id: number) => txToast('Executing schedule job...', async () => {
     return await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_SCHEDULER_ADDRESS,
+      abi: jobSchedulerAbi,
       functionName: 'executeScheduledJob',
       args: [BigInt(id)]
     })
@@ -150,8 +150,8 @@ export function SchedulerTab() {
 
   const handleCancelSchedule = (id: number) => txToast('Cancelling schedule...', async () => {
     return await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_SCHEDULER_ADDRESS,
+      abi: jobSchedulerAbi,
       functionName: 'cancelSchedule',
       args: [BigInt(id)]
     })
@@ -169,12 +169,12 @@ export function SchedulerTab() {
       address: tokenAddress,
       abi: usdcAbi,
       functionName: 'approve',
-      args: [JOBCHAIN_CONTRACT_ADDRESS, amountVal]
+      args: [JOB_SCHEDULER_ADDRESS, amountVal]
     })
 
     const hash = await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_SCHEDULER_ADDRESS,
+      abi: jobSchedulerAbi,
       functionName: 'replenishSchedule',
       args: [sId, amountVal]
     })
@@ -189,8 +189,8 @@ export function SchedulerTab() {
     const amountVal = parseUnits(actionAmount, 6)
 
     const hash = await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_SCHEDULER_ADDRESS,
+      abi: jobSchedulerAbi,
       functionName: 'withdrawSchedule',
       args: [sId, amountVal]
     })

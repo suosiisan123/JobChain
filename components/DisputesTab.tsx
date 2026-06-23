@@ -12,7 +12,9 @@ import {
   identityRegistryAbi,
   jobChainAbi,
   EURC_ADDRESS_ARC,
-  USDC_ADDRESS_ARC
+  USDC_ADDRESS_ARC,
+  JOB_DISPUTE_MANAGER_ADDRESS,
+  jobDisputeManagerAbi
 } from '@/lib/contracts'
 
 interface DisputeData {
@@ -77,8 +79,8 @@ export function DisputesTab() {
           // status = 6 is Disputed
           if (status === 6) {
             const dispute = await publicClient.readContract({
-              address: JOBCHAIN_CONTRACT_ADDRESS,
-              abi: jobChainAbi,
+              address: JOB_DISPUTE_MANAGER_ADDRESS,
+              abi: jobDisputeManagerAbi,
               functionName: 'getDispute',
               args: [BigInt(i)]
             }) as unknown as any[]
@@ -188,8 +190,8 @@ export function DisputesTab() {
 
   const handleVote = (jobId: number, agentId: number, support: boolean) => txToast('Casting vote...', async () => {
     return await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_DISPUTE_MANAGER_ADDRESS,
+      abi: jobDisputeManagerAbi,
       functionName: 'castVote',
       args: [BigInt(jobId), BigInt(agentId), support]
     })
@@ -197,8 +199,8 @@ export function DisputesTab() {
 
   const handleResolve = (jobId: number) => txToast('Resolving dispute...', async () => {
     return await writeContractAsync({
-      address: JOBCHAIN_CONTRACT_ADDRESS,
-      abi: jobChainAbi,
+      address: JOB_DISPUTE_MANAGER_ADDRESS,
+      abi: jobDisputeManagerAbi,
       functionName: 'resolveDispute',
       args: [BigInt(jobId)]
     })
