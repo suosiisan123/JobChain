@@ -18,10 +18,12 @@ import { DocsTab } from '@/components/DocsTab'
 import { GovernanceTab } from '@/components/GovernanceTab'
 import { AgentStudioTab } from '@/components/AgentStudioTab'
 import { BatchDecoderTab } from '@/components/BatchDecoderTab'
+import { AgentWorkspaceTab } from '@/components/AgentWorkspaceTab'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
 import { Clock, BookOpen, Vote } from 'lucide-react'
 
 const TABS = [
+  { id: 'agentos', label: '⚡ agent-os', icon: Zap },
   { id: 'terminal', label: '~/live-events', icon: Terminal },
   { id: 'identity', label: 'erc-8004', icon: Shield },
   { id: 'agentstudio', label: 'agent-studio', icon: Brain },
@@ -40,7 +42,7 @@ const TABS = [
 type TabId = typeof TABS[number]['id']
 
 export default function JobChainApp() {
-  const [activeTab, setActiveTab] = useState<TabId>('terminal')
+  const [activeTab, setActiveTab] = useState<TabId>('agentos')
   const { address, isConnected, isPasskey } = useSmartWallet()
   const { data: balance } = useBalance({ address: address as `0x${string}` })
   const [circleStatus, setCircleStatus] = useState<'Active' | 'Simulated' | 'Checking'>('Checking')
@@ -252,6 +254,7 @@ export default function JobChainApp() {
 
           {/* Main Content Area */}
           <div className="warp-main">
+            {activeTab === 'agentos' && <AgentWorkspaceTab />}
             {activeTab === 'terminal' && <TerminalTab />}
             {activeTab === 'identity' && <IdentityTab />}
             {activeTab === 'agentstudio' && <AgentStudioTab />}
