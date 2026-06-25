@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, MessageSquare, Copy, X, RefreshCw } from 'lucide-react'
+import { Terminal, Users, Briefcase, BarChart3, Fingerprint, Shield, Zap, MessageSquare, Copy, X, RefreshCw, LogOut } from 'lucide-react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useBalance, useAccount } from 'wagmi'
 import { Toaster, toast } from 'react-hot-toast'
@@ -29,7 +29,7 @@ export default function JobChainApp() {
   const [activeTab, setActiveTab] = useState<TabId>('home')
   const [devMode, setDevMode] = useState<boolean>(false)
   const [showUserModal, setShowUserModal] = useState<boolean>(false)
-  const { address, isConnected, isPasskey, email } = useSmartWallet()
+  const { address, isConnected, isPasskey, email, logout } = useSmartWallet()
   const { address: eoaAddress } = useAccount()
   const { data: balance } = useBalance({ address: address as `0x${string}` })
   const { data: scaErc20USDC } = useBalance({
@@ -828,6 +828,31 @@ export default function JobChainApp() {
 
             {/* Actions */}
             <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+              {isPasskey && (
+                <button
+                  onClick={() => {
+                    logout()
+                    setShowUserModal(false)
+                    toast.success('Smart Account disconnected. You can now log in with a new email.')
+                  }}
+                  className="warp-btn"
+                  style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    marginTop: 0,
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    color: '#EF4444',
+                    fontWeight: 'bold',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <LogOut size={14} />
+                  Disconnect
+                </button>
+              )}
               <button
                 onClick={() => setShowUserModal(false)}
                 className="warp-btn"
