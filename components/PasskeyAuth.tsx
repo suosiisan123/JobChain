@@ -158,57 +158,56 @@ export function PasskeyAuth() {
 
   if (isConnected && isPasskey) {
     return (
-      <div className="card" style={{ border: '1px solid var(--warp-cyan)', position: 'relative' }}>
+      <div className="form-card" style={{ border: '1px solid var(--warp-primary)', position: 'relative', background: 'rgba(15, 16, 21, 0.75)', borderRadius: '16px', padding: '32px' }}>
         <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8 }}>
           <button
-            className="warp-btn border"
+            className="dash-action-btn dash-btn-primary"
             onClick={handleFaucet}
             disabled={faucetLoading}
-            style={{ padding: '6px 10px', fontSize: 12, borderColor: '#7AA2F733', color: 'var(--warp-cyan)' }}
+            style={{ fontSize: 12 }}
           >
-            {faucetLoading ? 'Dripping...' : 'Request Faucet'}
+            {faucetLoading ? 'Processing...' : 'Request Test Credits'}
           </button>
           <button
-            className="warp-btn border"
+            className="dash-action-btn dash-btn-secondary"
             onClick={fetchWalletDetails}
             disabled={refreshing}
-            style={{ padding: '6px 10px' }}
           >
-            <RefreshCw size={12} className={refreshing ? 'spin' : ''} />
+            <RefreshCw size={12} className={refreshing ? 'spin-animation' : ''} />
           </button>
           <button
-            className="warp-btn border"
+            className="dash-action-btn dash-btn-danger"
             onClick={logout}
-            style={{ padding: '6px 10px', color: 'var(--warp-danger)', borderColor: '#F7768E33' }}
           >
-            <LogOut size={12} style={{ marginRight: 4 }} /> Logout
+            <LogOut size={12} /> Logout
           </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{
-            background: 'rgba(122, 162, 247, 0.1)',
+            background: 'rgba(143, 118, 255, 0.08)',
             padding: 10,
             borderRadius: '50%',
-            color: 'var(--warp-cyan)',
+            color: 'var(--warp-primary)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            border: '1px solid rgba(143, 118, 255, 0.2)'
           }}>
             <ShieldCheck size={24} />
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Passkey Smart Account</h3>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Secure Credential Profile</h3>
             <span style={{ fontSize: 12, color: 'var(--warp-muted)' }}>Authenticated as: {email}</span>
           </div>
         </div>
 
         {/* Account Dashboard Specs */}
         <div className="grid-2" style={{ marginBottom: 24 }}>
-          <div style={{ background: '#1F2335', padding: '12px 16px', borderRadius: 8, border: '1px solid #292E42' }}>
-            <span style={{ fontSize: 11, color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>SCA WALLET ADDRESS</span>
+          <div style={{ background: 'rgba(7, 7, 9, 0.5)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--warp-border)' }}>
+            <span style={{ fontSize: 11, color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>SECURE DEPOSIT ADDRESS</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#7AA2F7', wordBreak: 'break-all' }}>{address}</span>
+              <span style={{ fontFamily: 'var(--warp-font)', fontSize: 13, color: 'var(--warp-primary)', wordBreak: 'break-all' }}>{address}</span>
               <button
                 onClick={copyAddress}
                 style={{ background: 'none', border: 'none', color: 'var(--warp-muted)', cursor: 'pointer', padding: 2 }}
@@ -218,27 +217,27 @@ export function PasskeyAuth() {
             </div>
           </div>
 
-          <div style={{ background: '#1F2335', padding: '12px 16px', borderRadius: 8, border: '1px solid #292E42' }}>
-            <span style={{ fontSize: 11, color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>SECURITY SIGNER</span>
+          <div style={{ background: 'rgba(7, 7, 9, 0.5)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--warp-border)' }}>
+            <span style={{ fontSize: 11, color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>SECURITY ENVELOPE KEY</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--warp-success)', fontSize: 13, fontWeight: 500 }}>
-              <Fingerprint size={14} /> Biometric Passkey Protected (Non-Custodial)
+              <Fingerprint size={14} /> Biometric Passkey Secured
             </div>
           </div>
         </div>
 
         {/* Balance Specs */}
         <div className="grid-2" style={{ marginBottom: 24 }}>
-          <div style={{ background: '#1F2335', padding: '16px', borderRadius: 8, border: '1px solid #292E42', textAlign: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>USDC Escrow Asset</span>
+          <div style={{ background: 'rgba(7, 7, 9, 0.5)', padding: '16px', borderRadius: 8, border: '1px solid var(--warp-border)', textAlign: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>Clearing Asset Balance</span>
             <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-success)', fontVariantNumeric: 'tabular-nums' }}>
               {usdcBalance}
             </span>
             <span style={{ fontSize: 12, color: 'var(--warp-muted)', marginLeft: 6 }}>USDC</span>
           </div>
 
-          <div style={{ background: '#1F2335', padding: '16px', borderRadius: 8, border: '1px solid #292E42', textAlign: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>Arc Gas Token</span>
-            <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-cyan)', fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ background: 'rgba(7, 7, 9, 0.5)', padding: '16px', borderRadius: 8, border: '1px solid var(--warp-border)', textAlign: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>Transaction Fee Credit</span>
+            <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--warp-primary)', fontVariantNumeric: 'tabular-nums' }}>
               {gasBalance}
             </span>
             <span style={{ fontSize: 12, color: 'var(--warp-muted)', marginLeft: 6 }}>USDC</span>
@@ -246,9 +245,9 @@ export function PasskeyAuth() {
         </div>
 
         {/* Transaction History Card */}
-        <div style={{ borderTop: '1px solid #292E42', paddingTop: 20 }}>
+        <div style={{ borderTop: '1px solid var(--warp-border)', paddingTop: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Layers size={16} style={{ color: 'var(--warp-cyan)' }} />
+            <Layers size={16} style={{ color: 'var(--warp-primary)' }} />
             <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>SCA Transaction Log</h4>
           </div>
 
@@ -258,17 +257,17 @@ export function PasskeyAuth() {
               padding: '24px',
               color: 'var(--warp-muted)',
               fontSize: 12,
-              background: '#1A1B26',
+              background: 'rgba(7, 7, 9, 0.3)',
               borderRadius: 8,
-              border: '1px dashed #292E42'
+              border: '1px dashed var(--warp-border)'
             }}>
-              No transactions executed via Passkey yet.
+              No system settlements executed via Passkey yet.
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #292E42', textAlign: 'left', color: 'var(--warp-muted)' }}>
+                  <tr style={{ borderBottom: '1px solid var(--warp-border)', textAlign: 'left', color: 'var(--warp-muted)' }}>
                     <th style={{ padding: '8px 12px' }}>Method</th>
                     <th style={{ padding: '8px 12px' }}>Transaction Hash</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Time</th>
@@ -276,14 +275,14 @@ export function PasskeyAuth() {
                 </thead>
                 <tbody>
                   {txHistory.map((tx, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #1F2335' }}>
-                      <td style={{ padding: '8px 12px', color: '#7AA2F7', fontWeight: 500 }}>{tx.functionName}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.02)' }}>
+                      <td style={{ padding: '8px 12px', color: 'var(--warp-primary)', fontWeight: 500 }}>{tx.functionName}</td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'var(--warp-font)' }}>
                         <a
                           href={`https://testnet.arcscan.app/tx/${tx.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: 'var(--warp-cyan)', textDecoration: 'underline' }}
+                          style={{ color: 'var(--warp-primary)', textDecoration: 'underline' }}
                         >
                           {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-8)}
                         </a>
@@ -303,40 +302,61 @@ export function PasskeyAuth() {
   }
 
   return (
-    <div className="card" style={{ maxWidth: 480, margin: '40px auto', border: '1px solid #414868' }}>
+    <div className="form-card" style={{
+      maxWidth: 440,
+      margin: '40px auto',
+      background: 'rgba(15, 16, 21, 0.75)',
+      border: '1px solid var(--warp-border)',
+      borderRadius: '16px',
+      padding: '32px',
+      boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.02)',
+      backdropFilter: 'blur(12px)'
+    }}>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <div style={{
-          background: 'rgba(122, 162, 247, 0.05)',
-          width: 56,
-          height: 56,
+          background: 'rgba(143, 118, 255, 0.08)',
+          width: 60,
+          height: 60,
           borderRadius: '50%',
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'var(--warp-cyan)',
-          marginBottom: 16,
-          border: '1px solid rgba(122, 162, 247, 0.2)'
+          color: 'var(--warp-primary)',
+          marginBottom: 20,
+          border: '1px solid rgba(143, 118, 255, 0.2)',
+          boxShadow: '0 0 20px rgba(143, 118, 255, 0.1)'
         }}>
           <Fingerprint size={28} />
         </div>
-        <h2 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 600 }}>Biometric Smart Account Login</h2>
-        <p style={{ margin: 0, fontSize: 12, color: 'var(--warp-muted)' }}>
-          Onboard instantly with Passkeys. Zero seed phrase, 100% secure.
+        <h2 style={{ margin: '0 0 8px 0', fontSize: 20, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>Biometric Smart Credentials Sign-In</h2>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--warp-muted)', lineHeight: '1.5' }}>
+          Access your secure credentials instantly using device biometrics.
         </p>
       </div>
 
       <form onSubmit={handleLogin}>
         <div className="form-group" style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--warp-muted)', display: 'block', marginBottom: 8, letterSpacing: '0.05em' }}>
             EMAIL ADDRESS
           </label>
           <input
             type="email"
-            placeholder="developer@example.com"
+            placeholder="e.g. name@company.com (for gasless smart account sign-in)"
             value={inputEmail}
             onChange={(e) => setInputEmail(e.target.value)}
             required
-            style={{ width: '100%', padding: '10px 12px', fontSize: 13 }}
+            className="warp-input"
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              fontSize: '13px',
+              background: 'rgba(7, 7, 9, 0.6)',
+              border: '1px solid var(--warp-border)',
+              borderRadius: '8px',
+              color: '#ffffff',
+              outline: 'none',
+              transition: 'all 0.25s ease'
+            }}
             disabled={loading}
           />
         </div>
@@ -345,11 +365,23 @@ export function PasskeyAuth() {
           type="submit"
           className="warp-btn"
           disabled={loading || !inputEmail}
-          style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+          style={{
+            width: '100%',
+            justifyContent: 'center',
+            padding: '12px',
+            borderRadius: '8px',
+            background: loading || !inputEmail ? 'rgba(143, 118, 255, 0.2)' : 'var(--warp-primary)',
+            color: loading || !inputEmail ? 'rgba(255, 255, 255, 0.3)' : '#070709',
+            fontWeight: 700,
+            fontSize: '14px',
+            border: 'none',
+            cursor: loading || !inputEmail ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease'
+          }}
         >
           {loading ? (
             <>
-              <RefreshCw size={14} className="spin" style={{ marginRight: 8 }} />
+              <RefreshCw size={14} className="spin-animation" style={{ marginRight: 8 }} />
               Authenticating...
             </>
           ) : (
@@ -362,16 +394,17 @@ export function PasskeyAuth() {
       </form>
 
       <div style={{
-        marginTop: 20,
-        padding: 12,
-        background: '#1A1B26',
-        borderRadius: 8,
-        border: '1px solid #292E42',
-        fontSize: 11,
+        marginTop: 24,
+        padding: '14px',
+        background: 'rgba(7, 7, 9, 0.4)',
+        borderRadius: '10px',
+        border: '1px solid var(--warp-border)',
+        fontSize: '11px',
         color: 'var(--warp-muted)',
-        textAlign: 'center'
+        textAlign: 'center',
+        lineHeight: '1.5'
       }}>
-        Biometric sign-ins are validated device-side. Your private keys never leave your device.
+        Biometric sign-ins are validated locally. Your private keys never leave your secure enclave.
       </div>
     </div>
   )

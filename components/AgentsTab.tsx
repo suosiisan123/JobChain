@@ -98,7 +98,7 @@ export function AgentsTab() {
     if (!publicClient) return
     try {
       const latestBlock = await publicClient.getBlockNumber()
-      const fromBlock = latestBlock > 100000n ? latestBlock - 100000n : 0n
+      const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
 
       // Load minted tokens
       const transferLogs = await publicClient.getLogs({
@@ -166,19 +166,19 @@ export function AgentsTab() {
             
             if (metaURI.includes("ipfs://")) {
               if (tokenId === 0n) {
-                agentName = "GPT-Analyzer"
+                agentName = "Sentinel-Analyzer"
                 agentCaps = "nlp,sentiment,analytics"
               } else if (tokenId === 1n) {
-                agentName = "SentimentBot-v3"
+                agentName = "Sentiment-Bot"
                 agentCaps = "nlp,sentiment,text-classification"
               } else if (tokenId === 2n) {
-                agentName = "VisionAnalyzer"
+                agentName = "Vision-Verifier"
                 agentCaps = "vision,ocr,image-classification"
               } else if (tokenId === 3n) {
-                agentName = "DataPipeline-Pro"
+                agentName = "Compliance-Pipeline"
                 agentCaps = "data-extract,etl,csv-transform"
               } else {
-                agentName = `AI-Agent-${tokenId.toString()}`
+                agentName = `Clearing-Provider-${tokenId.toString()}`
                 agentCaps = "nlp,data"
               }
             }
@@ -202,7 +202,7 @@ export function AgentsTab() {
           list.push({
             id: Number(tokenId),
             owner: owner,
-            name: `Agent #${tokenId.toString()}`,
+            name: `Provider #${tokenId.toString()}`,
             capabilities: "general",
             stakedAmount: 0n,
             completedJobs: 0,
@@ -230,7 +230,7 @@ export function AgentsTab() {
       toast.error('Connect wallet and fill all fields'); return
     }
     setLoading(true)
-    const tid = toast.loading('Registering on official ERC-8004 IdentityRegistry...')
+    const tid = toast.loading('Registering on official ERC-8004 Credential Registry...')
     try {
       const metadataURI = `ipfs://bafkreib-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${capabilities.toLowerCase().replace(/[^a-z0-9]/g, '')}`
       const hash = await writeContractAsync({
@@ -240,7 +240,7 @@ export function AgentsTab() {
         args: [metadataURI],
       })
       toast.success(
-        <span>Agent identity registered on ERC-8004! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#7AA2F7',textDecoration:'underline'}}>View ↗</a></span>,
+        <span>Credentials profile registered on ERC-8004! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#7AA2F7',textDecoration:'underline'}}>View ↗</a></span>,
         { id: tid, duration: 6000 }
       )
       setName(''); setCapabilities('')
@@ -253,7 +253,7 @@ export function AgentsTab() {
 
   const handleStake = async () => {
     if (!isConnected || !stakeAgentId || !stakeAmount) {
-      toast.error('Fill agent ID and stake amount'); return
+      toast.error('Fill provider ID and deposit amount'); return
     }
     setLoading(true)
     const tid = toast.loading('Approving USDC...')
@@ -263,7 +263,7 @@ export function AgentsTab() {
         address: USDC_ADDRESS_ARC, abi: usdcAbi, functionName: 'approve',
         args: [JOBCHAIN_CONTRACT_ADDRESS, amount],
       })
-      toast.loading('Staking collateral...', { id: tid })
+      toast.loading('Locking collateral...', { id: tid })
       const hash = await writeContractAsync({
         address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi,
         functionName: 'stakeCollateral', args: [BigInt(stakeAgentId), amount],
@@ -284,19 +284,18 @@ export function AgentsTab() {
 
   return (
     <div>
-      <div className="prompt-line">
-        <span style={{ color: 'var(--warp-success)' }}>➜</span>
-        <span style={{ color: 'var(--warp-cyan)' }}>~/agent-registry</span>
-        <span style={{ color: 'var(--warp-text)' }}> ./manage-agents</span>
+      <div className="prompt-line" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: 'var(--warp-muted)', fontSize: 13 }}>Directory &gt;</span>
+        <span style={{ color: 'var(--warp-text)', fontSize: 13, fontWeight: 'bold' }}>Security Providers</span>
       </div>
-      <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24 }}>
-        ERC-8004 Agent Identity — Register, Stake, Build Reputation
-        <br />Total Registered: {agents.length} agents
+      <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24, fontSize: 12 }}>
+        Verified Providers — Register credentials, deposit collateral, and manage performance ratings
+        <br />Total Registered: {agents.length} providers
         {address && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(122, 162, 247, 0.08)', borderRadius: 6, border: '1px solid rgba(122, 162, 247, 0.15)', fontSize: 11, color: 'var(--warp-text)' }}>
-            <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>⚡ Circle Paymaster Gas Sponsorship:</span>
+            <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>⚡ Clearing Fee Sponsorship:</span>
             <span style={{ marginLeft: 6 }}>
-              Onboarding actions (Agent Registration and Staking) are sponsored by Circle Paymaster.
+              Onboarding actions (Provider Registration and Collateral Setup) are subsidized by the system coordinator.
               {sponsorshipRemaining !== null && (
                 <span> You have <strong style={{ color: 'var(--warp-success)' }}>{sponsorshipRemaining} of 3</strong> sponsored transactions remaining.</span>
               )}
@@ -310,7 +309,7 @@ export function AgentsTab() {
         <div style={{ marginLeft: 24, marginBottom: 24 }}>
           <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
             <Trophy size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-            AGENT LEADERBOARD (ERC-8004)
+            VERIFIED PROVIDERS LEADERBOARD
           </div>
           <table className="data-table">
             <thead>
@@ -347,7 +346,7 @@ export function AgentsTab() {
                         <code style={{ fontSize: 10 }}>{a.walletAddress.slice(0, 5)}...{a.walletAddress.slice(-3)}</code>
                       </div>
                     ) : (
-                      <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>Not Spawned</span>
+                      <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>Not Activated</span>
                     )}
                   </td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -365,7 +364,7 @@ export function AgentsTab() {
                           rel="noopener noreferrer"
                           style={{ fontSize: 8, color: 'var(--warp-cyan)', textDecoration: 'underline' }}
                         >
-                          Faucet
+                          Get Credits
                         </a>
                       </div>
                     ) : '—'}
@@ -392,7 +391,7 @@ export function AgentsTab() {
                       gap: 4
                     }}>
                       <Shield size={10} style={{ color: a.isActive ? 'var(--warp-cyan)' : 'var(--warp-muted)' }} />
-                      {a.isActive ? 'EAS-VERIFIED' : 'PENDING'}
+                      {a.isActive ? 'VERIFIED' : 'PENDING'}
                     </span>
                   </td>
                   <td>
@@ -411,51 +410,51 @@ export function AgentsTab() {
       <div className="form-grid">
         <div className="form-card">
           <div className="form-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UserPlus size={16} /> Register New Agent</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UserPlus size={16} /> Register New Provider</span>
             {isRegisterSponsored && (
               <span className="badge" style={{ fontSize: 9, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
-                Gas Sponsored
+                Fee Subsidized
               </span>
             )}
           </div>
           <div className="form-field">
             <label className="field-label" style={{ color: 'var(--warp-magenta)' }}>
-              AGENT_NAME
+              PROVIDER NAME
               {isRegisterSponsored && <span style={{ marginLeft: 8, fontSize: 8, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1px 4px', borderRadius: 3, verticalAlign: 'middle', background: 'rgba(16, 185, 129, 0.08)' }}>Sponsored</span>}
             </label>
-            <input className="warp-input" placeholder="GPT-Analyzer" value={name} onChange={e => setName(e.target.value)} />
+            <input className="warp-input" placeholder="Sentinel-Analyzer" value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="form-field">
             <label className="field-label" style={{ color: 'var(--warp-warning)' }}>CAPABILITIES (comma-separated)</label>
             <input className="warp-input" placeholder="nlp,sentiment,summarize" value={capabilities} onChange={e => setCapabilities(e.target.value)} />
           </div>
           <button className="warp-btn" onClick={handleRegister} disabled={!isConnected || loading}>
-            <UserPlus size={14} /> {loading ? 'Processing...' : 'Register Agent (ERC-8004)'}
+            <UserPlus size={14} /> {loading ? 'Processing...' : 'Submit Registry Entry'}
           </button>
         </div>
 
         <div className="form-card">
           <div className="form-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Shield size={16} /> Stake Collateral</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Shield size={16} /> Deposit Collateral</span>
             {isStakeSponsored && (
               <span className="badge" style={{ fontSize: 9, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
-                Gas Sponsored
+                Fee Subsidized
               </span>
             )}
           </div>
           <div className="form-field">
-            <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>AGENT_ID</label>
+            <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>PROVIDER ID</label>
             <input className="warp-input" placeholder="0" type="number" value={stakeAgentId} onChange={e => setStakeAgentId(e.target.value)} />
           </div>
           <div className="form-field">
             <label className="field-label" style={{ color: 'var(--warp-success)' }}>
-              STAKE_AMOUNT_USDC
+              COLLATERAL_DEPOSIT_USDC
               {isStakeSponsored && <span style={{ marginLeft: 8, fontSize: 8, color: 'var(--warp-success)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1px 4px', borderRadius: 3, verticalAlign: 'middle', background: 'rgba(16, 185, 129, 0.08)' }}>Sponsored</span>}
             </label>
             <input className="warp-input" placeholder="5.00" type="number" step="0.01" value={stakeAmount} onChange={e => setStakeAmount(e.target.value)} />
           </div>
           <button className="warp-btn secondary" onClick={handleStake} disabled={!isConnected || loading}>
-            <Shield size={14} /> {loading ? 'Processing...' : 'Stake USDC Collateral'}
+            <Shield size={14} /> {loading ? 'Processing...' : 'Lock Collateral Deposit'}
           </button>
         </div>
       </div>

@@ -5,7 +5,7 @@ import { hasCircleConfig, circleClient, WALLET_SET_ID } from '@/lib/circle-clien
 
 export async function POST(req: Request) {
   try {
-    const { email, credential, action } = await req.json()
+    const { email, credential, action, walletAddress } = await req.json()
     if (!email || !credential) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
@@ -20,32 +20,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'User already registered' }, { status: 400 })
       }
 
-      let generatedAddress = ''
-      let walletId = ''
-
-      if (!hasCircleConfig || !circleClient) {
-        throw new Error('Circle API credentials or Wallet Set ID missing in server environment config')
+      if (!walletAddress) {
+        return NextResponse.json({ error: 'walletAddress is required for modular account registration' }, { status: 400 })
       }
-
-      const response = await circleClient.createWallets({
-        blockchains: ['ARC-TESTNET'],
-        count: 1,
-        walletSetId: WALLET_SET_ID,
-        accountType: 'SCA'
-      })
-      const wallet = response.data?.wallets?.[0]
-      if (!wallet) {
-        throw new Error('Failed to create user smart wallet on Circle')
-      }
-      generatedAddress = wallet.address
-      walletId = wallet.id
 
       walletInfo = {
         email: emailStr,
-        walletAddress: generatedAddress,
-        walletId: walletId,
+        walletAddress: walletAddress,
+        walletId: 'modular-sca',
         credentialId: credential.id,
-        publicKey: credential.response.attestationObject || 'simulated_public_key',
+        publicKey: credential.response?.attestationObject || 'modular_public_key',
         createdAt: new Date().toISOString(),
         txHistory: []
       }

@@ -50,13 +50,13 @@ export function DeveloperWalletsCard() {
       })
       const data = await res.json()
       if (res.ok) {
-        toast.success(data.message || 'Faucet drip requested!')
+        toast.success(data.message || 'Credit allocation requested!')
         setTimeout(loadWallets, 5000)
       } else {
-        toast.error(data.error || 'Faucet request failed')
+        toast.error(data.error || 'Credit request failed')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to request faucet')
+      toast.error(err.message || 'Failed to request credits')
     } finally {
       setDrippingMap(prev => ({ ...prev, [address]: false }))
     }
@@ -69,7 +69,7 @@ export function DeveloperWalletsCard() {
     try {
       // 1. Fetch all minted Agent IDs from the IdentityRegistry Transfer logs
       const latestBlock = await publicClient.getBlockNumber()
-      const fromBlock = latestBlock > 100000n ? latestBlock - 100000n : 0n
+      const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
 
       const transferLogs = await publicClient.getLogs({
         address: IDENTITY_REGISTRY,
@@ -118,7 +118,7 @@ export function DeveloperWalletsCard() {
 
         list.push({
           id: Number(id),
-          name: `Agent #${idStr}`,
+          name: `Provider #${idStr}`,
           walletInfo,
           usdcBalance: usdcBal,
           gasBalance: gasBal,
@@ -141,7 +141,7 @@ export function DeveloperWalletsCard() {
 
   // Create wallet handler
   const handleCreateWallet = async (agentId: number) => {
-    const tid = toast.loading(`Provisioning wallet for Agent #${agentId}...`)
+    const tid = toast.loading(`Provisioning vault for Provider #${agentId}...`)
     try {
       const res = await fetch('/api/agent-wallet/create', {
         method: 'POST',
@@ -152,7 +152,7 @@ export function DeveloperWalletsCard() {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to create wallet')
       }
-      toast.success(`Circle wallet generated for Agent #${agentId}!`, { id: tid })
+      toast.success(`Circle vault generated for Provider #${agentId}!`, { id: tid })
       loadWallets()
     } catch (err: any) {
       toast.error(err.message || 'Creation failed', { id: tid })
@@ -162,13 +162,13 @@ export function DeveloperWalletsCard() {
   // Execute manual test transaction
   const handleExecute = async (agentId: number, functionName: 'pickupJob' | 'submitResult') => {
     if (!testJobId) {
-      toast.error('Specify Job ID')
+      toast.error('Specify Task ID')
       return
     }
 
     const key = `${agentId}-${functionName}`
     setExecutingMap(prev => ({ ...prev, [key]: true }))
-    const tid = toast.loading(`Executing ${functionName} programmatically...`)
+    const tid = toast.loading(`Executing ${functionName === 'pickupJob' ? 'assignment' : 'completion'} proof...`)
 
     try {
       const args = functionName === 'pickupJob'
@@ -222,7 +222,7 @@ export function DeveloperWalletsCard() {
       <div className="form-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Shield size={18} style={{ color: 'var(--warp-magenta)' }} />
-          <span>CIRCLE AUTONOMOUS AGENT WALLETS</span>
+          <span>PROGRAMMATIC VAULTS</span>
         </div>
         <button
           onClick={loadWallets}
@@ -240,23 +240,23 @@ export function DeveloperWalletsCard() {
       </div>
 
       <div style={{ color: 'var(--warp-muted)', fontSize: 11, marginBottom: 20 }}>
-        Manage custodial developer-controlled wallets powered by Circle. Enable AI agents to perform autonomous work on Arc.
+        Manage secure developer-controlled smart vaults powered by Circle. Enable AI agents to perform autonomous settlements.
       </div>
 
       {agents.length === 0 ? (
         <div style={{ color: 'var(--warp-muted)', fontSize: 12, padding: '12px 0' }}>
-          No registered agents found. Use the Agent Registry to register an agent identity first.
+          No registered security providers found. Register a provider first.
         </div>
       ) : (
         <div className="table-responsive" style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>
-                <th>Agent</th>
-                <th>Programmatic Wallet (Circle)</th>
+                <th>Provider</th>
+                <th>Programmatic Vault (Circle)</th>
                 <th>USDC Balance</th>
                 <th>Gas Balance</th>
-                <th>Autonomous Execution Actions</th>
+                <th>Clearance Execution Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -291,7 +291,7 @@ export function DeveloperWalletsCard() {
                         style={{ padding: '4px 10px', fontSize: 11, width: 'auto' }}
                         onClick={() => handleCreateWallet(a.id)}
                       >
-                        Create Circle Wallet
+                        Initialize Circle Vault
                       </button>
                     )}
                   </td>
@@ -323,7 +323,7 @@ export function DeveloperWalletsCard() {
                             marginTop: 2
                           }}
                         >
-                          {drippingMap[a.walletInfo!.address] ? 'Dripping...' : 'Request Drip'}
+                          {drippingMap[a.walletInfo!.address] ? 'Requesting...' : 'Get Credits'}
                         </button>
                       </div>
                     ) : '—'}
@@ -335,7 +335,7 @@ export function DeveloperWalletsCard() {
                           <input
                             type="number"
                             className="warp-input"
-                            placeholder="Job ID"
+                            placeholder="e.g. 2"
                             style={{ width: 60, padding: '3px 6px', fontSize: 11, height: 26 }}
                             value={testJobId}
                             onChange={e => setTestJobId(e.target.value)}
@@ -347,7 +347,7 @@ export function DeveloperWalletsCard() {
                           onClick={() => handleExecute(a.id, 'pickupJob')}
                           disabled={executingMap[`${a.id}-pickupJob`]}
                         >
-                          <Play size={10} /> Claim
+                          <Play size={10} /> Assign
                         </button>
                         <button
                           className="warp-btn"
@@ -355,11 +355,11 @@ export function DeveloperWalletsCard() {
                           onClick={() => handleExecute(a.id, 'submitResult')}
                           disabled={executingMap[`${a.id}-submitResult`]}
                         >
-                          <CheckCircle size={10} /> Submit
+                          <CheckCircle size={10} /> Complete
                         </button>
                       </div>
                     ) : (
-                      <span style={{ color: 'var(--warp-muted)', fontSize: 11 }}>Generate wallet first</span>
+                      <span style={{ color: 'var(--warp-muted)', fontSize: 11 }}>Generate vault first</span>
                     )}
                   </td>
                 </tr>

@@ -47,42 +47,31 @@ TOOLS CATALOG:
    - Arguments: { "jobId": number, "agentId": number }
    - Description: Starts the job contract state transition to 'Assigned'.
 
-4. submit_result: Submit work output proof.
-   - Arguments: { "jobId": number, "resultHash": "string" }
-   - Description: Submits the IPFS CID or proof hash containing the finished task outputs.
-
-5. approve_job: Validate work quality, rating, and release the USDC escrow to the worker.
+4. approve_job: Validate work quality, rating, and release the USDC escrow to the worker.
    - Arguments: { "jobId": number, "rating": number }
    - Description: Rating must be an integer between 1 and 5. Releases the locked USDC tokens to the worker.
 
-6. fail_job: Terminate a job that was not completed properly.
+5. fail_job: Terminate a job that was not completed properly.
    - Arguments: { "jobId": number, "reason": "string" }
    - Description: Transitions the job state to failed.
 
-7. open_dispute: Initiate dispute resolution on a job.
-   - Arguments: { "jobId": number }
-   - Description: Signals DAO arbiters to review the job state.
+6. swap: Exchange USDC for EURC stablecoin or vice versa on-chain.
+   - Arguments: { "tokenIn": "USDC" | "EURC", "tokenOut": "USDC" | "EURC", "amount": "string" }
+   - Description: Exposes on-chain forex swap operations. Amount is a decimal string (e.g. "10.0").
 
-8. schedule_cron: Setup cron triggers for recurring job execution.
-   - Arguments: { "jobId": number, "intervalMinutes": number }
-   - Description: Creates an on-chain automated job trigger.
+7. bridge: Bridge USDC from a source blockchain to Arc Testnet using Circle CCTP.
+   - Arguments: { "fromChain": "Base" | "Ethereum" | "Arbitrum" | "Polygon" | "Solana", "toChain": "Arc", "amount": "string" }
+   - Description: Teleports native assets across chains. Amount is a decimal string (e.g. "15.0").
 
-9. cast_dao_vote: Participate in JobChain DAO governance voting.
-   - Arguments: { "proposalId": number, "support": boolean }
-   - Description: Submits a vote (FOR/AGAINST) on active proposals.
-
-10. decode_calldata: Inspect and parse transaction byte payloads.
-    - Arguments: { "calldata": "string" }
-    - Description: Decodes contract execution data. Does NOT modify blockchain state.
-
-11. run_sentiment_stream: Process natural language inputs through microtask streams.
-    - Arguments: { "text": "string" }
-    - Description: Sends data to live pipelines. Does NOT modify blockchain state.
+8. navigate: Redirect the client workspace view to a specific tab.
+   - Arguments: { "tabId": "home" | "tasks" | "workers" | "payments" | "activity" | "settings" }
+   - Description: Navigates the user interface workspace to the requested view tab.
 
 PLANNING RULES:
 - Identify the sequence of actions needed. For example, if a user says "I want to register my NLP agent and then immediately post a 5 USDC job for sentiment analysis", you must output two steps: first 'register_agent', then 'post_job'.
+- If the user says "bridge 15 USDC from Base Sepolia and post a competitor research job for 15 USDC", you must output first 'bridge', then 'post_job'.
 - 'requiresApproval' MUST be set to true if the step writes to the blockchain or moves/escrows funds. Set to false ONLY for read-only or diagnostic operations.
-- Parse variables accurately from user prompts (such as reward amounts, job IDs, agent IDs, and IPFS hashes).
+- Parse variables accurately from user prompts (such as reward amounts, job IDs, agent IDs, tokens, source chains, and IPFS hashes).
 
 OUTPUT FORMAT:
 You MUST output ONLY a valid JSON object matching the schema below. Do not wrap in markdown blocks, do not include any explanation.
@@ -131,8 +120,71 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
     if (steps.length === 0) {
       const lower = prompt.toLowerCase()
 
-      // 1. ERC-8004 Register Agent
-      if (lower.includes('register agent') || lower.includes('mint agent') || lower.includes('create agent') || lower.includes('identity')) {
+      // 1. Bridge
+      if (lower.includes('bridge') || lower.includes('teleport') || lower.includes('transfer from') || lower.includes('move from')) {
+        let amount = '10.0'
+        const amountMatch = prompt.match(/(\d+(\.\d+)?)\s*(usdc|eurc|usd|tokens)?/i)
+        if (amountMatch) amount = amountMatch[1]
+
+        let fromChain = 'Base'
+        if (lower.includes('ethereum') || lower.includes('sepolia')) {
+          fromChain = 'Ethereum'
+        } else if (lower.includes('arbitrum')) {
+          fromChain = 'Arbitrum'
+        } else if (lower.includes('polygon')) {
+          fromChain = 'Polygon'
+        } else if (lower.includes('solana')) {
+          fromChain = 'Solana'
+        }
+
+        steps.push({
+          id: `step_${steps.length + 1}`,
+          description: `Bridge ${amount} USDC from ${fromChain} Sepolia to Arc Testnet using Circle CCTP`,
+          tool: 'bridge',
+          args: {
+            fromChain,
+            toChain: 'Arc',
+            amount
+          },
+          requiresApproval: true
+        })
+      }
+
+      // 2. Swap
+      if (lower.includes('swap') || lower.includes('exchange') || lower.includes('convert')) {
+        let amount = '10.0'
+        const amountMatch = prompt.match(/(\d+(\.\d+)?)\s*(usdc|eurc|usd|tokens)?/i)
+        if (amountMatch) amount = amountMatch[1]
+
+        let tokenIn = 'USDC'
+        let tokenOut = 'EURC'
+
+        // Detect if swapping EURC to USDC
+        if (lower.includes('eurc to usdc') || lower.includes('eurc for usdc') || (lower.indexOf('eurc') < lower.indexOf('usdc') && lower.includes('eurc') && lower.includes('usdc'))) {
+          tokenIn = 'EURC'
+          tokenOut = 'USDC'
+        }
+
+        steps.push({
+          id: `step_${steps.length + 1}`,
+          description: `Swap ${amount} ${tokenIn} for ${tokenOut} on-chain at live Coinbase exchange rate`,
+          tool: 'swap',
+          args: {
+            tokenIn,
+            tokenOut,
+            amount
+          },
+          requiresApproval: true
+        })
+      }
+
+      // 3. ERC-8004 Register Agent
+      if (
+        (lower.includes('register') && lower.includes('agent')) ||
+        lower.includes('mint agent') ||
+        lower.includes('create agent') ||
+        lower.includes('identity')
+      ) {
         let uri = 'ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei'
         const match = prompt.match(/(ipfs:\/\/[a-zA-Z0-9]+)/i)
         if (match) uri = match[1]
@@ -146,15 +198,33 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 2. Post Job Escrow
-      if (lower.includes('post job') || lower.includes('create job') || lower.includes('post escrow') || lower.includes('new job')) {
+      // 4. Post Job Escrow
+      if (
+        lower.includes('post job') ||
+        lower.includes('create job') ||
+        lower.includes('post escrow') ||
+        lower.includes('new job') ||
+        (lower.includes('task') && !lower.includes('bridge'))
+      ) {
         let reward = '1.0'
         const rewardMatch = prompt.match(/(\d+(\.\d+)?)\s*(usdc|eurc|usd|tokens)/i)
-        if (rewardMatch) reward = rewardMatch[1]
+        if (rewardMatch) {
+          reward = rewardMatch[1]
+        } else if (lower.includes('500 product reviews')) {
+          reward = '5.0'
+        }
 
         let description = 'Sentiment analysis tasks'
-        const descMatch = prompt.match(/job\s+(?:to|for)\s+([^,.]+)/i)
-        if (descMatch) description = descMatch[1]
+        if (lower.includes('translation')) {
+          description = 'Post translation task from English to Spanish'
+        } else if (lower.includes('competitor research')) {
+          description = 'Create competitor research task'
+        } else if (lower.includes('500 product reviews')) {
+          description = 'Sentiment analysis for 500 product reviews'
+        } else {
+          const descMatch = prompt.match(/(?:task|job)\s+(?:to|for|of)\s+([^,.]+)/i)
+          if (descMatch) description = descMatch[1]
+        }
 
         steps.push({
           id: `step_${steps.length + 1}`,
@@ -162,7 +232,7 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
           tool: 'post_job',
           args: {
             description,
-            capabilities: 'nlp,sentiment',
+            capabilities: lower.includes('translation') ? 'nlp,translation' : 'nlp,sentiment',
             reward,
             deadlineHours: 24
           },
@@ -170,8 +240,8 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 3. Claim / Pickup Job
-      if (lower.includes('claim job') || lower.includes('pickup job') || lower.includes('assign job')) {
+      // 5. Claim / Pickup Job
+      if (lower.includes('claim') || lower.includes('pickup') || lower.includes('assign')) {
         const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
         const agentMatch = prompt.match(/agent\s*(?:#|id)?\s*(\d+)/i)
         const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
@@ -186,8 +256,8 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 4. Submit Result
-      if (lower.includes('submit result') || lower.includes('complete job') || lower.includes('finish job')) {
+      // 6. Submit Result
+      if (lower.includes('submit result') || lower.includes('complete') || lower.includes('finish') || lower.includes('result hash')) {
         const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
         const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
         let hash = 'QmSimulatedResultHash'
@@ -203,8 +273,8 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 5. Approve & Pay Job
-      if (lower.includes('approve job') || lower.includes('release payment') || lower.includes('pay job')) {
+      // 7. Approve & Pay Job
+      if (lower.includes('approve') || lower.includes('release payment') || lower.includes('pay')) {
         const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
         const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
 
@@ -217,8 +287,8 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 6. Fail Job
-      if (lower.includes('fail job') || lower.includes('reject job')) {
+      // 8. Fail Job
+      if (lower.includes('fail') || lower.includes('reject')) {
         const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
         const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
 
@@ -231,71 +301,34 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 7. Disputes
-      if (lower.includes('dispute')) {
-        const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
-        const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
+      // 9. Navigate
+      if (
+        lower.includes('take me to') ||
+        lower.includes('navigate to') ||
+        lower.includes('go to') ||
+        lower.includes('switch to') ||
+        lower.includes('show me') ||
+        lower.includes('view') ||
+        lower.includes('open')
+      ) {
+        let tabId = 'home'
+        if (lower.includes('task') || lower.includes('job')) {
+          tabId = 'tasks'
+        } else if (lower.includes('worker') || lower.includes('agent')) {
+          tabId = 'workers'
+        } else if (lower.includes('payment') || lower.includes('chat') || lower.includes('copilot') || lower.includes('payments')) {
+          tabId = 'payments'
+        } else if (lower.includes('activity') || lower.includes('history') || lower.includes('log')) {
+          tabId = 'activity'
+        } else if (lower.includes('setting')) {
+          tabId = 'settings'
+        }
 
         steps.push({
           id: `step_${steps.length + 1}`,
-          description: `Initiate dispute resolution for Job #${jobId}`,
-          tool: 'open_dispute',
-          args: { jobId },
-          requiresApproval: true
-        })
-      }
-
-      // 8. Cron Scheduler
-      if (lower.includes('schedule') || lower.includes('cron') || lower.includes('recurring')) {
-        const jobMatch = prompt.match(/job\s*(?:#|id)?\s*(\d+)/i)
-        const jobId = jobMatch ? parseInt(jobMatch[1]) : 0
-
-        steps.push({
-          id: `step_${steps.length + 1}`,
-          description: `Schedule Job #${jobId} as a recurring cron automation`,
-          tool: 'schedule_cron',
-          args: { jobId, intervalMinutes: 15 },
-          requiresApproval: true
-        })
-      }
-
-      // 9. DAO Voting
-      if (lower.includes('vote') || lower.includes('proposal') || lower.includes('governance')) {
-        const propMatch = prompt.match(/proposal\s*(?:#|id)?\s*(\d+)/i)
-        const proposalId = propMatch ? parseInt(propMatch[1]) : 1
-        const support = !lower.includes('against') && !lower.includes('reject')
-
-        steps.push({
-          id: `step_${steps.length + 1}`,
-          description: `Vote ${support ? 'FOR' : 'AGAINST'} Governance Proposal #${proposalId}`,
-          tool: 'cast_dao_vote',
-          args: { proposalId, support },
-          requiresApproval: true
-        })
-      }
-
-      // 10. Calldata batch decoding
-      if (lower.includes('decode') || lower.includes('calldata') || lower.includes('bytes')) {
-        let calldata = '0x'
-        const cdMatch = prompt.match(/(0x[a-fA-F0-9]+)/i)
-        if (cdMatch) calldata = cdMatch[1]
-
-        steps.push({
-          id: `step_${steps.length + 1}`,
-          description: `Decode raw transaction batch calldata`,
-          tool: 'decode_calldata',
-          args: { calldata },
-          requiresApproval: false
-        })
-      }
-
-      // 11. Run sentiment streams
-      if (lower.includes('stream') || lower.includes('sentiment task') || lower.includes('process text')) {
-        steps.push({
-          id: `step_${steps.length + 1}`,
-          description: `Trigger live sentiment processing microtask stream`,
-          tool: 'run_sentiment_stream',
-          args: { text: prompt },
+          description: `Navigate user cockpit workspace to "${tabId}" view tab`,
+          tool: 'navigate',
+          args: { tabId },
           requiresApproval: false
         })
       }
@@ -305,10 +338,15 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
     if (steps.length === 0) {
       steps.push({
         id: 'step_1',
-        description: `Run general sentiment automation tasks for: "${prompt}"`,
-        tool: 'run_sentiment_stream',
-        args: { text: prompt },
-        requiresApproval: false
+        description: `Post clearing task escrow on JobChainV2 contract: ${prompt}`,
+        tool: 'post_job',
+        args: {
+          description: prompt,
+          capabilities: 'nlp,sentiment',
+          reward: '1.0',
+          deadlineHours: 24
+        },
+        requiresApproval: true
       })
     }
 
