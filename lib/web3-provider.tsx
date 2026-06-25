@@ -290,14 +290,14 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
         })
         console.log('[SCA] CallData:', callData.slice(0, 74) + '...')
 
-        // Send UserOperation — NO hardcoded gas prices.
-        // Let the SDK auto-estimate via circle_getUserOperationGasPrice.
-        // This matches the official Circle reference implementation exactly.
+        // Send UserOperation — let SDK auto-estimate maxFeePerGas.
+        // Arc Testnet bundler requires minPriorityFee >= 1 Gwei (SDK estimates 0.48 Gwei which is too low).
         toast.loading('Submitting transaction to bundler...', { id: 'passkey-tx' })
         const userOpHash = await bundlerClient.sendUserOperation({
           account: activeAccount,
           calls: [{ to: args.address, data: callData }],
           paymaster: true,
+          maxPriorityFeePerGas: 1000000000n, // 1 Gwei — Arc Testnet bundler minimum
         })
 
         console.log('[SCA] ✅ UserOp sent! Hash:', userOpHash)
