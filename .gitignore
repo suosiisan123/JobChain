@@ -55,3 +55,4 @@ typechain-types/
 coverage/
 coverage.json
 gas-reporter.txt
+lib/gas-sponsor-db.json
