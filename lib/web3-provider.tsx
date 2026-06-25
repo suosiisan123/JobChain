@@ -239,6 +239,9 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
     toast.success('Logged out of Smart Account')
   }
 
+  // Global transaction lock to prevent concurrent user operations
+  const txLockRef = React.useRef(false)
+
   const writeContractAsync = async (args: {
     address: `0x${string}`
     abi: any
@@ -250,6 +253,13 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
     }
 
     if (passkeyAddress && passkeyEmail) {
+      // Prevent concurrent submissions — the #1 cause of mempool-full errors
+      if (txLockRef.current) {
+        toast.error('A transaction is already in progress. Please wait for it to complete.')
+        throw new Error('Transaction already in progress')
+      }
+      txLockRef.current = true
+
       let activeAccount = passkeyAccount
       if (!activeAccount) {
         const storedCred = localStorage.getItem('jobchain_passkey_credential')
@@ -261,108 +271,139 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
           })
           setPasskeyAccount(activeAccount)
         } else {
+          txLockRef.current = false
           throw new Error('Passkey credential not found. Please log in again.')
         }
       }
 
-      console.log('[SCA Debug] 🚀 Starting writeContractAsync for Passkey Wallet:', {
-        passkeyAddress,
-        passkeyEmail,
-        targetContract: args.address,
-        functionName: args.functionName,
-        arguments: args.args
+      console.log('[SCA] 🚀 writeContractAsync:', {
+        sender: passkeyAddress, email: passkeyEmail,
+        to: args.address, fn: args.functionName, args: args.args
       })
       toast.loading('Preparing secure biometric signature...', { id: 'passkey-tx' })
+
       try {
-        console.log('[SCA Debug] Encoding contract function call data...')
         const callData = encodeFunctionData({
           abi: args.abi,
           functionName: args.functionName,
           args: args.args,
         })
-        console.log('[SCA Debug] Generated CallData (hex):', callData)
+        console.log('[SCA] CallData:', callData.slice(0, 74) + '...')
 
-        console.log('[SCA Debug] Sending User Operation request to Circle Bundler at:', clientUrl)
-        toast.loading('Submitting transaction to bundler...', { id: 'passkey-tx' })
+        // --- SEND WITH AUTO-RETRY FOR MEMPOOL-FULL ---
+        let userOpHash: `0x${string}` | null = null
+        const maxSendRetries = 10
+        const retryBaseDelay = 15_000 // 15 seconds
 
-        const userOpHash = await bundlerClient.sendUserOperation({
-          account: activeAccount,
-          calls: [{
-            to: args.address,
-            data: callData,
-          }],
-          paymaster: true,
-          maxPriorityFeePerGas: 3000000000n, // 3 Gwei (higher priority to replace/accelerate stuck txs)
-          maxFeePerGas: 30000000000n, // 30 Gwei max fee
-        })
-        
-        console.log('[SCA Debug] User Operation successfully sent! hash:', userOpHash)
-        console.log(`[SCA Debug] You can track the user operation status at: ${clientUrl}/user-ops/${userOpHash}`)
-        toast.loading(`User Op sent! Hash: ${userOpHash.slice(0, 10)}...`, { id: 'passkey-tx' })
-
-        // Custom detailed polling loop for tracking state progression
-        console.log('[SCA Debug] Starting polling loop for User Operation Receipt...')
-        let receiptData: any = null
-        let attempts = 0
-        const maxAttempts = 60 // 3 minutes total
-        const delayMs = 3000
-
-        while (!receiptData && attempts < maxAttempts) {
-          attempts++
-          console.log(`[SCA Debug] Polling attempt ${attempts}/${maxAttempts} for userOp: ${userOpHash}`)
+        for (let attempt = 1; attempt <= maxSendRetries; attempt++) {
           try {
-            // Check status via getUserOperationByHash first
-            const opDetails = await bundlerClient.request({
-              method: 'eth_getUserOperationByHash' as any,
-              params: [userOpHash] as any
-            })
-            console.log(`[SCA Debug] getUserOperationByHash response (Attempt ${attempts}):`, opDetails)
+            console.log(`[SCA] sendUserOperation attempt ${attempt}/${maxSendRetries}`)
+            toast.loading(
+              attempt === 1
+                ? 'Submitting transaction to bundler...'
+                : `Retrying (${attempt}/${maxSendRetries})... waiting for pending ops to clear`,
+              { id: 'passkey-tx' }
+            )
 
-            // Try getting the receipt
+            userOpHash = await bundlerClient.sendUserOperation({
+              account: activeAccount,
+              calls: [{ to: args.address, data: callData }],
+              paymaster: true,
+              maxPriorityFeePerGas: 1500000000n, // 1.5 Gwei
+              maxFeePerGas: 15000000000n, // 15 Gwei
+            })
+
+            console.log('[SCA] ✅ UserOp sent! Hash:', userOpHash)
+            break
+          } catch (sendErr: any) {
+            const errMsg = sendErr?.message || sendErr?.details || String(sendErr)
+            const isMemPoolFull = errMsg.includes('Max operations') && errMsg.includes('unstaked')
+
+            console.warn(`[SCA] Attempt ${attempt} failed:`, errMsg.slice(0, 200))
+
+            if (isMemPoolFull && attempt < maxSendRetries) {
+              const waitSec = Math.round((retryBaseDelay * attempt) / 1000)
+              console.log(`[SCA] Bundler mempool full (4 pending ops). Waiting ${waitSec}s...`)
+              toast.loading(
+                `Bundler queue full — waiting for pending ops to clear (${waitSec}s)... Try ${attempt}/${maxSendRetries}`,
+                { id: 'passkey-tx' }
+              )
+              await new Promise(resolve => setTimeout(resolve, retryBaseDelay * attempt))
+              continue
+            }
+
+            // Fatal error — release lock and throw
+            txLockRef.current = false
+            if (isMemPoolFull) {
+              toast.error(
+                'Bundler has too many pending transactions for this account. ' +
+                'Wait 2-3 minutes for previous operations to clear, then try again.',
+                { id: 'passkey-tx', duration: 8000 }
+              )
+              throw new Error('Bundler mempool full: max pending operations reached. Please wait and retry.')
+            }
+            toast.error(`Transaction rejected: ${sendErr?.shortMessage || errMsg.slice(0, 120)}`, { id: 'passkey-tx' })
+            throw sendErr
+          }
+        }
+
+        if (!userOpHash) {
+          txLockRef.current = false
+          throw new Error('Failed to submit UserOperation after all retries')
+        }
+
+        // --- POLL FOR RECEIPT ---
+        toast.loading(`UserOp sent! Waiting for on-chain confirmation...`, { id: 'passkey-tx' })
+        let receiptData: any = null
+        const maxPollAttempts = 60
+        const pollDelay = 3000
+
+        for (let poll = 1; poll <= maxPollAttempts; poll++) {
+          try {
             receiptData = await bundlerClient.request({
               method: 'eth_getUserOperationReceipt' as any,
               params: [userOpHash] as any
             })
-            
             if (receiptData) {
-              console.log('[SCA Debug] User Operation Receipt retrieved! Details:', receiptData)
+              console.log(`[SCA] ✅ Receipt found on poll ${poll}:`, receiptData)
               break
-            } else {
-              console.log('[SCA Debug] Receipt is still null. User operation is pending inclusion.')
-              toast.loading(`Waiting for block inclusion... (Attempt ${attempts}/${maxAttempts})`, { id: 'passkey-tx' })
+            }
+            console.log(`[SCA] Poll ${poll}/${maxPollAttempts}: pending`)
+            if (poll % 5 === 0) {
+              toast.loading(`Confirming on-chain... (${poll}/${maxPollAttempts})`, { id: 'passkey-tx' })
             }
           } catch (e: any) {
-            console.warn(`[SCA Debug] Query error on attempt ${attempts}:`, e.message || e)
+            console.warn(`[SCA] Poll ${poll} error:`, e.message || e)
           }
-          await new Promise(resolve => setTimeout(resolve, delayMs))
+          await new Promise(resolve => setTimeout(resolve, pollDelay))
         }
 
+        txLockRef.current = false
+
         if (!receiptData) {
-          console.error('[SCA Debug] Polling timed out. User operation is still pending.')
-          throw new Error(`Timed out waiting for User Operation ${userOpHash} to be confirmed. It remains pending in the bundler mempool.`)
+          console.error('[SCA] ❌ Receipt polling timed out')
+          toast.error('Transaction submitted but confirmation timed out. Check the explorer.', { id: 'passkey-tx', duration: 8000 })
+          throw new Error(`UserOp ${userOpHash} submitted but not confirmed within 3 minutes.`)
         }
 
         const txHash = receiptData.receipt?.transactionHash || receiptData.transactionHash || receiptData.hash
-        console.log('[SCA Debug] System settlement completed successfully! Transaction Hash:', txHash)
-        toast.success(`Success! Tx Hash: ${txHash.slice(0, 10)}...`, { id: 'passkey-tx' })
+        console.log('[SCA] 🎉 Confirmed! TxHash:', txHash)
+        toast.success(`Transaction confirmed! ${txHash.slice(0, 10)}...`, { id: 'passkey-tx' })
 
-        // Save to localStorage history so it displays instantly on frontend
+        // Persist to localStorage for immediate frontend display
         const localHistoryKey = `tx_history_${passkeyEmail}`
         const existingHistory = JSON.parse(localStorage.getItem(localHistoryKey) || '[]')
-        existingHistory.unshift({
-          txHash: txHash,
-          functionName: args.functionName,
-          timestamp: new Date().toISOString()
-        })
+        existingHistory.unshift({ txHash, functionName: args.functionName, timestamp: new Date().toISOString() })
         localStorage.setItem(localHistoryKey, JSON.stringify(existingHistory))
-
-        // Trigger standard storage event so other tabs hear it
         window.dispatchEvent(new Event('storage'))
 
         return txHash
       } catch (err: any) {
-        console.error('[SCA Debug] Execution failed with error:', err)
-        toast.error(`Execution failed: ${err.message || err}`, { id: 'passkey-tx' })
+        txLockRef.current = false
+        console.error('[SCA] ❌ Execution failed:', err)
+        if (!err.message?.includes('mempool full') && !err.message?.includes('already in progress')) {
+          toast.error(`Execution failed: ${err?.shortMessage || err.message || err}`, { id: 'passkey-tx' })
+        }
         throw err
       }
     }
