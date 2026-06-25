@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useReadContract, usePublicClient } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
@@ -55,6 +56,11 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
   const [depositCurrency, setDepositCurrency] = useState<'USDC' | 'EURC'>('USDC')
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Bridge simulation states
   const [bridgeFromChain, setBridgeFromChain] = useState('Base')
@@ -524,8 +530,8 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
       </div>
 
       {/* ── Deposit Drawer ── */}
-      {showDepositDrawer && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
+      {mounted && showDepositDrawer && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
           <div style={{ width: '100%', maxWidth: 420, background: '#111218', borderLeft: '1px solid var(--warp-border)', padding: 32, display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', margin: '0 0 8px 0' }}>Deposit Clearing Funds</h2>
             <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 24px 0', lineHeight: 1.5 }}>
@@ -551,12 +557,13 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Withdraw Drawer ── */}
-      {showWithdrawDrawer && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
+      {mounted && showWithdrawDrawer && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
           <div style={{ width: '100%', maxWidth: 420, background: '#111218', borderLeft: '1px solid var(--warp-border)', padding: 32, display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', margin: '0 0 8px 0' }}>Release Vault Funds</h2>
             <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 24px 0', lineHeight: 1.5 }}>
@@ -584,7 +591,8 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

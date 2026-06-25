@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useReadContract, usePublicClient } from 'wagmi'
 import { formatUnits, parseUnits, parseAbiItem } from 'viem'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
@@ -75,6 +76,11 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
   const [verifyName, setVerifyName] = useState('')
   const [verifyCaps, setVerifyCaps] = useState('analytics,data-extract,nlp')
   const [verifying, setVerifying] = useState(false)
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Read verification status (balanceOf) on IDENTITY_REGISTRY
   const { data: identityCount, refetch: refetchIdentity } = useReadContract({
@@ -1011,8 +1017,8 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
       )}
 
       {/* ── MODAL: Verify Identity ── */}
-      {showVerifyModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      {mounted && showVerifyModal && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
           <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
             <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center', marginBottom: 16, width: '100%' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: 0 }}>Register Security Profile</h3>
@@ -1062,12 +1068,13 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── DRAWER: Deposit Drawer ── */}
-      {showDepositDrawer && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      {mounted && showDepositDrawer && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
           <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: '0 0 4px 0' }}>Deposit Capital</h3>
             <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 16px 0' }}>Fund your automated yield optimization portfolio.</p>
@@ -1099,7 +1106,7 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
                     {depositCurrency}
                   </span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4 }}>
+                <div style={{ display: 'flex', justifySelf: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4, width: '100%' }}>
                   <span>Available Balance:</span>
                   <span style={{ fontWeight: 'bold' }}>
                     {depositCurrency === 'USDC' ? userUsdcBal : userEurcBal} {depositCurrency}
@@ -1108,7 +1115,7 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               </div>
 
               {/* Advanced info */}
-              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--warp-border)', borderRadius: 6, fontSize: 11, color: 'var(--warp-muted)' }}>
+              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--warp-border)', borderRadius: 6, fontSize: 11, color: 'var(--warp-muted)', width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span>Slippage Limit:</span>
                   <span style={{ color: '#ffffff' }}>0.5%</span>
@@ -1120,7 +1127,7 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, width: '100%' }}>
               <button 
                 onClick={() => setShowDepositDrawer(false)} 
                 className="warp-btn secondary"
@@ -1139,12 +1146,13 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── DRAWER: Withdraw Drawer ── */}
-      {showWithdrawDrawer && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      {mounted && showWithdrawDrawer && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
           <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: '0 0 4px 0' }}>Withdraw Capital</h3>
             <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 16px 0' }}>Return assets back to your external Web3 address.</p>
@@ -1164,14 +1172,14 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
                     USDC
                   </span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4 }}>
+                <div style={{ display: 'flex', justifySelf: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4, width: '100%' }}>
                   <span>Max Vault Available:</span>
                   <span style={{ fontWeight: 'bold' }}>{gatewayVaultBal} USDC</span>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, width: '100%' }}>
               <button 
                 onClick={() => setShowWithdrawDrawer(false)} 
                 className="warp-btn secondary"
@@ -1190,7 +1198,8 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
