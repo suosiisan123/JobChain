@@ -50,7 +50,7 @@ interface JobData {
   hasParent?: boolean;
 }
 
-export function JobsTab() {
+export function JobsTab({ devMode }: { devMode: boolean }) {
   const { address, isConnected, writeContractAsync } = useSmartWallet()
   const publicClient = usePublicClient()
   const [jobs, setJobs] = useState<JobData[]>([])
@@ -200,7 +200,7 @@ export function JobsTab() {
     } finally { setLoading(false) }
   }
 
-  const handlePostJob = () => txToast('Posting job...', async () => {
+  const handlePostJob = () => txToast('Initiating escrow...', async () => {
     const tokenAddress = paymentCurrency === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
     
     if (auctionType === 'Fixed') {
@@ -267,8 +267,8 @@ export function JobsTab() {
     }
   }, [bridgeState.step])
 
-  const handlePickup = () => txToast('Claiming job...', async () => {
-    if (!pickupAgentId) throw new Error('Agent ID is required')
+  const handlePickup = () => txToast('Assigning task...', async () => {
+    if (!pickupAgentId) throw new Error('Provider ID is required')
     
     // Validate agent ID on the official IdentityRegistry
     try {
@@ -280,10 +280,10 @@ export function JobsTab() {
       }) as string
 
       if (!owner || owner === '0x0000000000000000000000000000000000000000') {
-        throw new Error('Agent ID is not registered')
+        throw new Error('Provider ID is not registered')
       }
     } catch (err) {
-      throw new Error('Agent ID is not registered on official ERC-8004 IdentityRegistry')
+      throw new Error('Provider ID is not registered on official ERC-8004 Credential Registry')
     }
 
     return await writeContractAsync({
@@ -294,8 +294,8 @@ export function JobsTab() {
     })
   })
 
-  const handleSetPreference = () => txToast('Updating agent payout preference...', async () => {
-    if (!prefAgentId) throw new Error('Agent ID is required')
+  const handleSetPreference = () => txToast('Updating provider payout preference...', async () => {
+    if (!prefAgentId) throw new Error('Provider ID is required')
     const tokenAddress = prefToken === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
     return await writeContractAsync({
       address: JOBCHAIN_CONTRACT_ADDRESS,
@@ -330,13 +330,13 @@ export function JobsTab() {
     return hash
   })
 
-  const handleApprove = () => txToast('Releasing payment...', async () => {
+  const handleApprove = () => txToast('Disbursing funds...', async () => {
     const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'approveAndRelease', args: [BigInt(approveJobId), parseInt(rating)] })
     fetchJobs()
     return hash
   })
 
-  const handleFail = () => txToast('Marking job as failed...', async () => {
+  const handleFail = () => txToast('Recording clearance failure...', async () => {
     const hash = await writeContractAsync({ address: JOBCHAIN_CONTRACT_ADDRESS, abi: jobChainAbi, functionName: 'failJob', args: [BigInt(failJobId), failReason] })
     setFailJobId(''); setFailReason('')
     fetchJobs()
@@ -365,13 +365,15 @@ export function JobsTab() {
 
   return (
     <div>
-      <div className="prompt-line">
-        <span style={{ color: 'var(--warp-success)' }}>➜</span>
-        <span style={{ color: 'var(--warp-cyan)' }}>~/job-queue</span>
-        <span style={{ color: 'var(--warp-text)' }}> ./manage-jobs</span>
+      <div className="prompt-line" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: 'var(--warp-muted)', fontSize: 13 }}>JobChain &gt;</span>
+        <span style={{ color: 'var(--warp-text)', fontSize: 13, fontWeight: 'bold' }}>Protected Payments</span>
       </div>
-      <div className="prompt-output" style={{ color: 'var(--warp-muted)', marginBottom: 24 }}>
-        ERC-8183 Job Protocol — Post, Claim, Submit, Approve | Total: {jobs.length} jobs
+      <div style={{ color: 'var(--warp-muted)', marginBottom: 24, fontSize: 12, marginTop: 4 }}>
+        {devMode 
+          ? `Clearing Ledger (ERC-8183 Specification) — Fund, assign, submit settlement evidence, and release payments | Total: ${jobs.length} clearance escrows`
+          : `Protected payments — Securely fund tasks, assign verified providers, submit completion evidence, and release payouts | Total: ${jobs.length} active payments`
+        }
       </div>
 
       {/* ── Job Queue Table ── */}
@@ -379,11 +381,11 @@ export function JobsTab() {
         <div style={{ marginLeft: 24, marginBottom: 24 }}>
           <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
             <Briefcase size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-            JOB QUEUE (ERC-8183)
+            CLEARANCE ESCROWS (ERC-8183)
           </div>
           <table className="data-table">
             <thead>
-              <tr><th>ID</th><th>Description</th><th>Skills</th><th>Reward</th><th>Deadline</th><th>Agent</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>ID</th><th>Description</th><th>Skills</th><th>Clearance Reward</th><th>Deadline</th><th>Provider</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {jobs.map(j => (
@@ -490,12 +492,14 @@ export function JobsTab() {
       )}
 
       <div className="form-grid">
-        <div style={{ gridColumn: '1 / -1', marginBottom: 16 }}>
-          <VerificationHelper />
-        </div>
+        {devMode && (
+          <div style={{ gridColumn: '1 / -1', marginBottom: 16 }}>
+            <VerificationHelper />
+          </div>
+        )}
 
         <div className="form-card">
-          <div className="form-title"><Briefcase size={16} /> Post Job</div>
+          <div className="form-title"><Briefcase size={16} /> Initiate Escrow</div>
           
           <div className="form-field">
             <label className="field-label" style={{color:'var(--warp-cyan)'}}>FUNDING SOURCE CHAIN</label>
@@ -503,7 +507,6 @@ export function JobsTab() {
               className="warp-input"
               value={selectedChainId}
               onChange={(e) => setSelectedChainId(Number(e.target.value))}
-              style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
             >
               <option value={5042002}>Arc Testnet (Direct - Gas in USDC)</option>
               <option value={11155111}>Ethereum Sepolia (Circle CCTP)</option>
@@ -520,7 +523,6 @@ export function JobsTab() {
                   className="warp-input"
                   value={auctionType}
                   onChange={(e) => setAuctionType(e.target.value as 'Fixed' | 'Dutch' | 'Bid')}
-                  style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
                 >
                   <option value="Fixed">Fixed Reward Escrow</option>
                   <option value="Dutch">Dutch Decay Auction</option>
@@ -534,7 +536,7 @@ export function JobsTab() {
                     <label className="field-label" style={{ color: 'var(--warp-warning)' }}>FLOOR PRICE ({paymentCurrency})</label>
                     <input
                       className="warp-input"
-                      placeholder="2.00"
+                      placeholder="e.g. 10.00"
                       type="number"
                       value={floorPrice}
                       onChange={e => setFloorPrice(e.target.value)}
@@ -544,7 +546,7 @@ export function JobsTab() {
                     <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>DECAY DURATION (MINS)</label>
                     <input
                       className="warp-input"
-                      placeholder="30"
+                      placeholder="e.g. 30"
                       type="number"
                       value={decayPeriodMinutes}
                       onChange={e => setDecayPeriodMinutes(e.target.value)}
@@ -559,7 +561,6 @@ export function JobsTab() {
                   className="warp-input"
                   value={paymentCurrency}
                   onChange={(e) => setPaymentCurrency(e.target.value as 'USDC' | 'EURC')}
-                  style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
                 >
                   <option value="USDC">USDC (USD Stablecoin)</option>
                   <option value="EURC">EURC (Euro Stablecoin)</option>
@@ -569,7 +570,7 @@ export function JobsTab() {
           )}
 
           {selectedChainId !== 5042002 && (
-            <div style={{ marginBottom: 16, padding: 12, background: '#1A1B26', borderRadius: 8, border: '1px solid #292E42' }}>
+            <div style={{ marginBottom: 16, padding: 12, background: 'rgba(15,16,21,0.5)', borderRadius: 8, border: '1px solid var(--warp-border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
                 <span style={{ color: 'var(--warp-muted)' }}>Estimated Bridging Time:</span>
                 <span style={{ color: 'var(--warp-cyan)', fontWeight: 500 }}>
@@ -589,20 +590,20 @@ export function JobsTab() {
             </div>
           )}
 
-          <div className="form-field"><label className="field-label" style={{color:'var(--warp-magenta)'}}>DESCRIPTION</label><input className="warp-input" placeholder="Analyze sentiment of 100 tweets" value={desc} onChange={e=>setDesc(e.target.value)}/></div>
-          <div className="form-field"><label className="field-label" style={{color:'var(--warp-warning)'}}>CAPABILITIES</label><input className="warp-input" placeholder="nlp,sentiment" value={skills} onChange={e=>setSkills(e.target.value)}/></div>
+          <div className="form-field"><label className="field-label" style={{color:'var(--warp-magenta)'}}>DESCRIPTION</label><input className="warp-input" placeholder="e.g. Perform sentiment analysis on 500 product reviews and output JSON summary" value={desc} onChange={e=>setDesc(e.target.value)}/></div>
+          <div className="form-field"><label className="field-label" style={{color:'var(--warp-warning)'}}>CAPABILITIES</label><input className="warp-input" placeholder="e.g. nlp, sentiment, python (required capabilities, comma-separated)" value={skills} onChange={e=>setSkills(e.target.value)}/></div>
           <div style={{display:'flex',gap:12}}>
             <div className="form-field" style={{flex:1}}>
               <label className="field-label" style={{color:'var(--warp-success)'}}>
                 {auctionType === 'Fixed' ? 'REWARD' : auctionType === 'Dutch' ? 'START PRICE' : 'REWARD CAP'} ({selectedChainId === 5042002 ? paymentCurrency : 'USDC'})
               </label>
-              <input className="warp-input" placeholder="5.00" type="number" value={reward} onChange={e=>setReward(e.target.value)}/>
+              <input className="warp-input" placeholder="e.g. 15.00 (Escrow reward amount in USDC)" type="number" value={reward} onChange={e=>setReward(e.target.value)}/>
             </div>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE_H</label><input className="warp-input" type="number" value={deadlineHours} onChange={e=>setDeadlineHours(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE (HOURS)</label><input className="warp-input" placeholder="e.g. 48 (Completion deadline in hours)" type="number" value={deadlineHours} onChange={e=>setDeadlineHours(e.target.value)}/></div>
           </div>
 
           {selectedChainId === 5042002 && reward && parseFloat(reward) > 0 && (
-            <div style={{ margin: '12px 0', padding: 10, background: '#1F2335', borderRadius: 6, border: '1px solid #3B4261', fontSize: 11 }}>
+            <div style={{ margin: '12px 0', padding: 10, background: 'rgba(15,16,21,0.5)', borderRadius: 6, border: '1px solid var(--warp-border)', fontSize: 11 }}>
               <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>StableFX Exchange Preview:</span>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                 <span style={{ color: 'var(--warp-muted)' }}>Deposit Escrow:</span>
@@ -632,64 +633,63 @@ export function JobsTab() {
             </div>
           )}
 
-          <button className="warp-btn" onClick={handlePostJobWrapper} disabled={!isConnected||loading||!desc||!skills||!reward}><Briefcase size={14}/> {loading?'Processing...':'Post Job'}</button>
+          <button className="warp-btn" onClick={handlePostJobWrapper} disabled={!isConnected||loading||!desc||!skills||!reward}><Briefcase size={14}/> {loading?'Processing...':'Lock Escrow'}</button>
         </div>
 
         <div className="form-card">
-          <div className="form-title"><Play size={16} /> Claim Job</div>
+          <div className="form-title"><Play size={16} /> Assign Clearance</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={pickupJobId} onChange={e=>setPickupJobId(e.target.value)}/></div>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-magenta)'}}>AGENT_ID</label><input className="warp-input" type="number" value={pickupAgentId} onChange={e=>setPickupAgentId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>ESCROW_ID</label><input className="warp-input" type="number" placeholder="e.g. 2 (Clearance Escrow ID to assign)" value={pickupJobId} onChange={e=>setPickupJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-magenta)'}}>PROVIDER_ID</label><input className="warp-input" type="number" placeholder="e.g. 142 (AI Worker Agent ID to assign to this escrow)" value={pickupAgentId} onChange={e=>setPickupAgentId(e.target.value)}/></div>
           </div>
           <div className="form-field" style={{marginTop:8}}>
             <label className="field-label" style={{color:'var(--warp-success)'}}>CAPABILITY ATTESTATION (OR '0x')</label>
-            <input className="warp-input" placeholder="0x..." value={pickupProof} onChange={e=>setPickupProof(e.target.value)}/>
+            <input className="warp-input" placeholder="e.g. 0x3ab6... (Cryptographic attestation signature, or leave 0x for automatic bypass)" value={pickupProof} onChange={e=>setPickupProof(e.target.value)}/>
           </div>
-          <button className="warp-btn secondary" onClick={handlePickup} disabled={!isConnected||loading} style={{marginTop:8}}><Play size={14}/> Claim</button>
+          <button className="warp-btn secondary" onClick={handlePickup} disabled={!isConnected||loading} style={{marginTop:8}}><Play size={14}/> Assign</button>
         </div>
 
         <div className="form-card">
-          <div className="form-title"><CheckCircle size={16} /> Submit Result</div>
+          <div className="form-title"><CheckCircle size={16} /> Submit Settlement Proof</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={submitJobId} onChange={e=>setSubmitJobId(e.target.value)}/></div>
-            <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-warning)'}}>RESULT_HASH</label><input className="warp-input" placeholder="QmHash..." value={resultHash} onChange={e=>setResultHash(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>ESCROW_ID</label><input className="warp-input" type="number" placeholder="e.g. 2 (Clearance Escrow ID to submit results for)" value={submitJobId} onChange={e=>setSubmitJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-warning)'}}>EVIDENCE_HASH</label><input className="warp-input" placeholder="e.g. QmSimulatedResultHash (IPFS CID or text evidence of completion)" value={resultHash} onChange={e=>setResultHash(e.target.value)}/></div>
           </div>
           <div className="form-field" style={{marginTop:8}}>
-            <label className="field-label" style={{color:'var(--warp-success)'}}>ZK/EXECUTION PROOF (OR '0x')</label>
-            <input className="warp-input" placeholder="0x..." value={submitProof} onChange={e=>setSubmitProof(e.target.value)}/>
+            <label className="field-label" style={{color:'var(--warp-success)'}}>ZK/CLEARANCE PROOF (OR '0x')</label>
+            <input className="warp-input" placeholder="e.g. 0x... (Optional ZK-proof signature, or leave 0x)" value={submitProof} onChange={e=>setSubmitProof(e.target.value)}/>
           </div>
-          <button className="warp-btn secondary" onClick={handleSubmit} disabled={!isConnected||loading} style={{marginTop:8}}><CheckCircle size={14}/> Submit</button>
+          <button className="warp-btn secondary" onClick={handleSubmit} disabled={!isConnected||loading} style={{marginTop:8}}><CheckCircle size={14}/> Submit Settlement</button>
         </div>
 
         <div className="form-card">
-          <div className="form-title"><CheckCircle size={16} /> Approve &amp; Pay</div>
+          <div className="form-title"><CheckCircle size={16} /> Verify &amp; Disburse</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={approveJobId} onChange={e=>setApproveJobId(e.target.value)}/></div>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>RATING (1-5)</label><input className="warp-input" type="number" min="1" max="5" value={rating} onChange={e=>setRating(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>ESCROW_ID</label><input className="warp-input" type="number" placeholder="e.g. 2 (Clearance Escrow ID to approve and release)" value={approveJobId} onChange={e=>setApproveJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>RATING (1-5)</label><input className="warp-input" type="number" min="1" max="5" placeholder="e.g. 5 (Worker performance rating from 1 to 5)" value={rating} onChange={e=>setRating(e.target.value)}/></div>
           </div>
-          <button className="warp-btn" onClick={handleApprove} disabled={!isConnected||loading} style={{background:'var(--warp-success)'}}><CheckCircle size={14}/> Release Payment</button>
+          <button className="warp-btn" onClick={handleApprove} disabled={!isConnected||loading} style={{background:'var(--warp-success)'}}><CheckCircle size={14}/> Release Funds</button>
         </div>
 
         <div className="form-card">
-          <div className="form-title" style={{color:'var(--warp-error)'}}><CheckCircle size={16} /> Fail Job</div>
+          <div className="form-title" style={{color:'var(--warp-error)'}}><CheckCircle size={16} /> Invalidate Clearance</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>JOB_ID</label><input className="warp-input" type="number" value={failJobId} onChange={e=>setFailJobId(e.target.value)}/></div>
-            <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-error)'}}>REASON</label><input className="warp-input" placeholder="Failed to deliver on time" value={failReason} onChange={e=>setFailReason(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>ESCROW_ID</label><input className="warp-input" type="number" placeholder="e.g. 2 (Clearance Escrow ID to fail)" value={failJobId} onChange={e=>setFailJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:2}}><label className="field-label" style={{color:'var(--warp-error)'}}>REASON</label><input className="warp-input" placeholder="e.g. Review output contains incorrect formats or is incomplete" value={failReason} onChange={e=>setFailReason(e.target.value)}/></div>
           </div>
-          <button className="warp-btn" onClick={handleFail} disabled={!isConnected||loading} style={{background:'var(--warp-error)'}}><CheckCircle size={14}/> Fail Job</button>
+          <button className="warp-btn" onClick={handleFail} disabled={!isConnected||loading} style={{background:'var(--warp-error)'}}><CheckCircle size={14}/> Record Clearance Failure</button>
         </div>
 
         <div className="form-card">
-          <div className="form-title" style={{color:'var(--warp-cyan)'}}><Briefcase size={16} /> Agent Payout preference</div>
+          <div className="form-title" style={{color:'var(--warp-cyan)'}}><Briefcase size={16} /> Provider Payout Preference</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>AGENT_ID</label><input className="warp-input" type="number" placeholder="1" value={prefAgentId} onChange={e=>setPrefAgentId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>PROVIDER_ID</label><input className="warp-input" type="number" placeholder="e.g. 142 (AI Worker Agent ID to set payout preference for)" value={prefAgentId} onChange={e=>setPrefAgentId(e.target.value)}/></div>
             <div className="form-field" style={{flex:1}}>
               <label className="field-label" style={{color:'var(--warp-success)'}}>PREFERENCE</label>
               <select
                 className="warp-input"
                 value={prefToken}
                 onChange={(e) => setPrefToken(e.target.value as 'USDC' | 'EURC')}
-                style={{ background: '#1A1B26', color: 'var(--warp-text)', border: '1px solid #292E42', borderRadius: 4, padding: '8px 12px' }}
               >
                 <option value="USDC">USDC Payout</option>
                 <option value="EURC">EURC Payout</option>
@@ -700,13 +700,13 @@ export function JobsTab() {
         </div>
 
         <div className="form-card">
-          <div className="form-title" style={{color:'var(--warp-warning)'}}><Briefcase size={16} /> Delegate Sub-Job</div>
+          <div className="form-title" style={{color:'var(--warp-warning)'}}><Briefcase size={16} /> Delegate Clearance Subtask</div>
           <div style={{display:'flex',gap:12}}>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>PARENT_JOB_ID</label><input className="warp-input" type="number" placeholder="0" value={subParentJobId} onChange={e=>setSubParentJobId(e.target.value)}/></div>
-            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>SUB-REWARD</label><input className="warp-input" type="number" placeholder="2.50" value={subReward} onChange={e=>setSubReward(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>PARENT_ESCROW_ID</label><input className="warp-input" type="number" placeholder="e.g. 2 (Parent Clearance Escrow ID)" value={subParentJobId} onChange={e=>setSubParentJobId(e.target.value)}/></div>
+            <div className="form-field" style={{flex:1}}><label className="field-label" style={{color:'var(--warp-success)'}}>SUB-CLEARANCE_REWARD</label><input className="warp-input" type="number" placeholder="e.g. 10.00 (Escrow reward portion to allocate to sub-task)" value={subReward} onChange={e=>setSubReward(e.target.value)}/></div>
           </div>
-          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-warning)'}}>DESCRIPTION</label><input className="warp-input" placeholder="Coding subtask" value={subDesc} onChange={e=>setSubDesc(e.target.value)}/></div>
-          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE (HOURS)</label><input className="warp-input" type="number" value={subDeadlineHours} onChange={e=>setSubDeadlineHours(e.target.value)}/></div>
+          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-warning)'}}>DESCRIPTION</label><input className="warp-input" placeholder="e.g. Analyze review segment 1-100 (Sub-task description)" value={subDesc} onChange={e=>setSubDesc(e.target.value)}/></div>
+          <div className="form-field" style={{marginTop:8}}><label className="field-label" style={{color:'var(--warp-cyan)'}}>DEADLINE (HOURS)</label><input className="warp-input" type="number" placeholder="e.g. 12 (Sub-task completion deadline in hours)" value={subDeadlineHours} onChange={e=>setSubDeadlineHours(e.target.value)}/></div>
           <button className="warp-btn" onClick={handlePostSubJob} disabled={!isConnected||loading||!subParentJobId||!subDesc||!subReward} style={{background:'var(--warp-warning)',color:'#000'}}><Briefcase size={14}/> Delegate Subtask</button>
         </div>
       </div>

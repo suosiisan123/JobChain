@@ -172,7 +172,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
 
   // Submit Bid with approval check
   const handleSubmitBid = () => runTx('Submitting bid...', async () => {
-    if (!bidAgentId || !bidPrice) throw new Error('Agent ID and Price are required')
+    if (!bidAgentId || !bidPrice) throw new Error('Provider ID and Price are required')
     const priceAmount = parseUnits(bidPrice, 6)
 
     // Verify allowance for 1 USDC deposit
@@ -215,7 +215,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
 
   // Claim Dutch Auction
   const handleClaimDutch = () => runTx('Claiming Dutch Job...', async () => {
-    if (!claimAgentId) throw new Error('Agent ID is required')
+    if (!claimAgentId) throw new Error('Provider ID is required')
     return await writeContractAsync({
       address: JOBCHAIN_CONTRACT_ADDRESS,
       abi: jobChainAbi,
@@ -260,7 +260,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
 
       {/* Dutch Decay Panel */}
       {isDutch && (
-        <div style={{ background: '#1A1B26', padding: 12, borderRadius: 6, border: '1px solid #292E42' }}>
+        <div style={{ background: 'rgba(15,16,21,0.5)', padding: 12, borderRadius: 6, border: '1px solid var(--warp-border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
             <span style={{ color: 'var(--warp-muted)' }}>Decay Period:</span>
             <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>{timeLeftStr}</span>
@@ -306,7 +306,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
             <input
               type="number"
               className="warp-input"
-              placeholder="Agent ID"
+              placeholder="e.g. 142 (Your Provider ID)"
               value={claimAgentId}
               onChange={e => setClaimAgentId(e.target.value)}
               style={{ flex: 1 }}
@@ -314,7 +314,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
             <input
               type="text"
               className="warp-input"
-              placeholder="Capability Proof (0x)"
+              placeholder="e.g. 0x... (Optional proof or leave 0x)"
               value={claimProof}
               onChange={e => setClaimProof(e.target.value)}
               style={{ flex: 2 }}
@@ -334,7 +334,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
       {/* Bidding Panel */}
       {isBid && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ background: '#1A1B26', padding: 12, borderRadius: 6, border: '1px solid #292E42' }}>
+          <div style={{ background: 'rgba(15,16,21,0.5)', padding: 12, borderRadius: 6, border: '1px solid var(--warp-border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
               <span style={{ color: 'var(--warp-muted)' }}>Maximum Cap:</span>
               <span style={{ color: 'var(--warp-text)', fontWeight: 600 }}>
@@ -357,8 +357,8 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
 
           {/* Bid History */}
           {bids.length > 0 && (
-            <div style={{ maxHeight: 100, overflowY: 'auto', border: '1px solid #1F2335', borderRadius: 4, background: 'rgba(26,27,38,0.5)' }}>
-              <div style={{ fontSize: 9, color: 'var(--warp-muted)', fontWeight: 700, padding: '4px 8px', borderBottom: '1px solid #1F2335' }}>
+            <div style={{ maxHeight: 100, overflowY: 'auto', border: '1px solid var(--warp-border)', borderRadius: 4, background: 'rgba(15,16,21,0.5)' }}>
+              <div style={{ fontSize: 9, color: 'var(--warp-muted)', fontWeight: 700, padding: '4px 8px', borderBottom: '1px solid var(--warp-border)' }}>
                 BID LOGS
               </div>
               {bids.map((b, idx) => {
@@ -370,11 +370,11 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '6px 8px',
-                    borderBottom: '1px solid #1F2335',
+                    borderBottom: '1px solid var(--warp-border)',
                     background: isLeading ? 'rgba(158, 206, 106, 0.05)' : 'transparent'
                   }}>
                     <div style={{ fontSize: 10 }}>
-                      <span style={{ color: 'var(--warp-magenta)', fontWeight: 600 }}>Agent #{b.agentId}</span>
+                      <span style={{ color: 'var(--warp-magenta)', fontWeight: 600 }}>Provider #{b.agentId}</span>
                       <span style={{ color: 'var(--warp-muted)', marginLeft: 6 }}>{b.bidder.slice(0, 6)}...{b.bidder.slice(-4)}</span>
                       {isLeading && <span style={{ color: 'var(--warp-success)', fontSize: 9, marginLeft: 6, fontWeight: 700 }}>[LEADING]</span>}
                     </div>
@@ -414,7 +414,7 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
               <input
                 type="number"
                 className="warp-input"
-                placeholder="Agent ID"
+                placeholder="e.g. 142 (Your Provider ID)"
                 value={bidAgentId}
                 onChange={e => setBidAgentId(e.target.value)}
                 style={{ flex: 1 }}
@@ -422,13 +422,13 @@ export function AuctionCard({ job, onActionSuccess }: AuctionCardProps) {
               <input
                 type="number"
                 className="warp-input"
-                placeholder={`Price (${currencySymbol})`}
+                placeholder={`e.g. 12.50 (Your Bid Ask in ${currencySymbol})`}
                 value={bidPrice}
                 onChange={e => setBidPrice(e.target.value)}
                 style={{ flex: 1.5 }}
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(122, 162, 247, 0.05)', borderRadius: 4, border: '1px solid rgba(122, 162, 247, 0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--warp-primary-glow)', borderRadius: 4, border: '1px solid var(--warp-border)' }}>
               <AlertCircle size={10} style={{ color: 'var(--warp-primary)', flexShrink: 0 }} />
               <span style={{ fontSize: 9, color: 'var(--warp-muted)' }}>
                 Locks a temporary 1 USDC deposit. Deposit is refunded immediately if outbid.

@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Shield, CheckCircle, AlertCircle, Copy, HelpCircle, FileText, Check, Cpu, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { Shield, CheckCircle, AlertCircle, Copy, Check, Cpu, RefreshCw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { readContract } from '@wagmi/core'
 import { config } from '@/lib/web3-provider'
-import { JOBCHAIN_CONTRACT_ADDRESS, ZK_VERIFIER_CONTRACT_ADDRESS, jobChainAbi } from '@/lib/contracts'
-import { parseUnits, formatUnits } from 'viem'
+import { ZK_VERIFIER_CONTRACT_ADDRESS } from '@/lib/contracts'
 
 interface VerificationHelperProps {
   onSignatureGenerated?: (sig: string) => void
@@ -132,79 +131,78 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
   }
 
   return (
-    <div className="card" style={{ border: '1px solid var(--warp-border-glow)', boxShadow: '0 0 15px rgba(187, 154, 247, 0.05)' }}>
-      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="form-card" style={{ border: '1px solid var(--warp-border)', boxShadow: '0 0 15px rgba(143, 118, 255, 0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--warp-border)', paddingBottom: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Shield size={16} className="neon-magenta" />
-          <h2 style={{ fontSize: 14, margin: 0, letterSpacing: '0.05em' }}>CRYPTOGRAPHIC VERIFICATION COMPILER</h2>
+          <Shield size={16} style={{ color: 'var(--warp-magenta)' }} />
+          <h2 style={{ fontSize: 13, fontWeight: 700, margin: 0, letterSpacing: '0.05em', color: 'var(--warp-text)' }}>CRYPTOGRAPHIC VERIFICATION COMPILER</h2>
         </div>
-        <div className="flex-row" style={{ gap: 4 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           <button 
             className={`btn-subtab ${activeTab === 'capability' ? 'active' : ''}`}
             onClick={() => { setActiveTab('capability'); setSignature(''); setIsValidOnChain(null); }}
-            style={{ fontSize: 10, padding: '2px 8px' }}
           >
-            Agent Capability
+            Provider Credentials
           </button>
           <button 
             className={`btn-subtab ${activeTab === 'execution' ? 'active' : ''}`}
             onClick={() => { setActiveTab('execution'); setSignature(''); setIsValidOnChain(null); }}
-            style={{ fontSize: 10, padding: '2px 8px' }}
           >
-            Work Execution
+            Work Clearance
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <p style={{ fontSize: 11, color: 'var(--warp-muted)', margin: 0 }}>
           {activeTab === 'capability' 
-            ? 'Generate a signed capability attestation for an AI agent. The signature is registered on-chain during job pickup to verify model skills.'
+            ? 'Generate a signed capability attestation for a security provider. The signature is registered on-chain during task pickup to verify credentials.'
             : 'Compile cryptographic proofs of execution. Ensures results are mathematically verified before releasing funds.'}
         </p>
 
         {activeTab === 'capability' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 10, color: 'var(--warp-text)', fontWeight: 600, display: 'block', marginBottom: 4 }}>AGENT ID</label>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>PROVIDER ID</label>
               <input 
                 type="number" 
                 value={agentId} 
                 onChange={(e) => setAgentId(e.target.value)} 
-                className="input-field" 
-                placeholder="1"
+                className="warp-input" 
+                placeholder="e.g. 3"
               />
             </div>
-            <div>
-              <label style={{ fontSize: 10, color: 'var(--warp-text)', fontWeight: 600, display: 'block', marginBottom: 4 }}>CAPABILITIES (COMMA-SEPARATED)</label>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--warp-magenta)' }}>CAPABILITIES (COMMA-SEPARATED)</label>
               <input 
                 type="text" 
                 value={caps} 
                 onChange={(e) => setCaps(e.target.value)} 
-                className="input-field" 
-                placeholder="nlp,translation"
+                className="warp-input" 
+                placeholder="e.g. solidity,audit,security (comma-separated)"
               />
             </div>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 10, color: 'var(--warp-text)', fontWeight: 600, display: 'block', marginBottom: 4 }}>JOB ID</label>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>ESCROW ID</label>
               <input 
                 type="number" 
                 value={jobId} 
                 onChange={(e) => setJobId(e.target.value)} 
-                className="input-field" 
-                placeholder="1"
+                className="warp-input" 
+                placeholder="e.g. 1"
               />
             </div>
-            <div>
-              <label style={{ fontSize: 10, color: 'var(--warp-text)', fontWeight: 600, display: 'block', marginBottom: 4 }}>RESULT HASH / IPFS URI</label>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--warp-warning)' }}>RESULT HASH / IPFS URI</label>
               <input 
                 type="text" 
                 value={resultHash} 
                 onChange={(e) => setResultHash(e.target.value)} 
-                className="input-field" 
+                className="warp-input" 
+                placeholder="e.g. ipfs://QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
               />
             </div>
           </div>
@@ -213,12 +211,12 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
         <button 
           onClick={handleGenerate} 
           disabled={loading}
-          className="btn-primary" 
-          style={{ width: '100%', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          className="warp-btn" 
+          style={{ width: '100%', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#0A0A0C', background: 'var(--warp-primary)', marginTop: 8 }}
         >
           {loading ? (
             <>
-              <RefreshCw size={14} className="spin" /> Generating Attestation...
+              <RefreshCw size={14} className="spin-animation" /> Generating Attestation...
             </>
           ) : (
             <>
@@ -228,7 +226,7 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
         </button>
 
         {signature && (
-          <div style={{ marginTop: 8, padding: 12, background: 'var(--warp-card)', borderRadius: 6, border: '1px solid var(--warp-border)' }}>
+          <div style={{ marginTop: 8, padding: 12, background: 'rgba(15,16,21,0.5)', borderRadius: 6, border: '1px solid var(--warp-border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: 'var(--warp-cyan)', fontWeight: 600 }}>COMPILED PROOF ATTRIBUTE:</span>
               <button 
@@ -243,14 +241,14 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
             <div style={{ 
               fontFamily: 'monospace', 
               fontSize: 10, 
-              background: '#1a1b26', 
+              background: '#070709', 
               padding: 8, 
               borderRadius: 4, 
               wordBreak: 'break-all', 
               color: 'var(--warp-text)',
               maxHeight: 60,
               overflowY: 'auto',
-              border: '1px solid rgba(255,255,255,0.05)'
+              border: '1px solid var(--warp-border)'
             }}>
               {signature}
             </div>
@@ -264,8 +262,8 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
               <button 
                 onClick={handleVerifyOnChain} 
                 disabled={verifying}
-                className="btn-secondary"
-                style={{ flex: 1, fontSize: 11, padding: '6px' }}
+                className="warp-btn secondary"
+                style={{ flex: 1, fontSize: 11, padding: '6px', justifyContent: 'center', marginTop: 0 }}
               >
                 {verifying ? 'Running EVM Verification...' : 'Verify On-Chain'}
               </button>
@@ -280,7 +278,7 @@ export function VerificationHelper({ onSignatureGenerated }: VerificationHelperP
                 alignItems: 'center', 
                 gap: 8, 
                 fontSize: 11,
-                background: isValidOnChain ? 'rgba(158, 206, 106, 0.1)' : 'rgba(247, 118, 142, 0.1)',
+                background: isValidOnChain ? 'rgba(13, 211, 147, 0.1)' : 'rgba(255, 90, 90, 0.1)',
                 border: `1px solid ${isValidOnChain ? 'var(--warp-success)' : 'var(--warp-error)'}`
               }}>
                 {isValidOnChain ? (

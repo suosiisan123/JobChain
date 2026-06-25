@@ -109,7 +109,7 @@ export function DependencyTree({ jobs, rootJobId }: DependencyTreeProps) {
             {/* Agent */}
             {node.job.assignedAgent > 0 ? (
               <span style={{ background: 'rgba(187, 154, 247, 0.1)', color: 'var(--warp-magenta)', padding: '2px 6px', borderRadius: 4, fontSize: 10 }}>
-                Agent #{node.job.assignedAgent}
+                Provider #{node.job.assignedAgent}
               </span>
             ) : (
               <span style={{ color: 'var(--warp-muted)', fontSize: 10 }}>Unassigned</span>
