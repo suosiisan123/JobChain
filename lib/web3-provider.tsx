@@ -292,8 +292,8 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
             data: callData,
           }],
           paymaster: true,
-          maxPriorityFeePerGas: 1500000000n, // At least 1.5 Gwei to satisfy Arc Testnet precheck of 1 Gwei
-          maxFeePerGas: 15000000000n, // 15 Gwei max fee
+          maxPriorityFeePerGas: 3000000000n, // 3 Gwei (higher priority to replace/accelerate stuck txs)
+          maxFeePerGas: 30000000000n, // 30 Gwei max fee
         })
         
         console.log('[SCA Debug] User Operation successfully sent! hash:', userOpHash)
