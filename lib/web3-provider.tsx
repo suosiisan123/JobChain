@@ -253,7 +253,7 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
     }
 
     if (passkeyAddress && passkeyEmail) {
-      // Prevent concurrent submissions — the #1 cause of mempool-full errors
+      // Prevent concurrent submissions
       if (txLockRef.current) {
         toast.error('A transaction is already in progress. Please wait for it to complete.')
         throw new Error('Transaction already in progress')
@@ -277,8 +277,8 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
       }
 
       console.log('[SCA] 🚀 writeContractAsync:', {
-        sender: passkeyAddress, email: passkeyEmail,
-        to: args.address, fn: args.functionName, args: args.args
+        sender: passkeyAddress, to: args.address,
+        fn: args.functionName, args: args.args
       })
       toast.loading('Preparing secure biometric signature...', { id: 'passkey-tx' })
 
@@ -290,105 +290,30 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
         })
         console.log('[SCA] CallData:', callData.slice(0, 74) + '...')
 
-        // --- SEND WITH AUTO-RETRY FOR MEMPOOL-FULL ---
-        let userOpHash: `0x${string}` | null = null
-        const maxSendRetries = 10
-        const retryBaseDelay = 15_000 // 15 seconds
+        // Send UserOperation — NO hardcoded gas prices.
+        // Let the SDK auto-estimate via circle_getUserOperationGasPrice.
+        // This matches the official Circle reference implementation exactly.
+        toast.loading('Submitting transaction to bundler...', { id: 'passkey-tx' })
+        const userOpHash = await bundlerClient.sendUserOperation({
+          account: activeAccount,
+          calls: [{ to: args.address, data: callData }],
+          paymaster: true,
+        })
 
-        for (let attempt = 1; attempt <= maxSendRetries; attempt++) {
-          try {
-            console.log(`[SCA] sendUserOperation attempt ${attempt}/${maxSendRetries}`)
-            toast.loading(
-              attempt === 1
-                ? 'Submitting transaction to bundler...'
-                : `Retrying (${attempt}/${maxSendRetries})... waiting for pending ops to clear`,
-              { id: 'passkey-tx' }
-            )
+        console.log('[SCA] ✅ UserOp sent! Hash:', userOpHash)
+        toast.loading('Waiting for on-chain confirmation...', { id: 'passkey-tx' })
 
-            userOpHash = await bundlerClient.sendUserOperation({
-              account: activeAccount,
-              calls: [{ to: args.address, data: callData }],
-              paymaster: true,
-              maxPriorityFeePerGas: 1500000000n, // 1.5 Gwei
-              maxFeePerGas: 15000000000n, // 15 Gwei
-            })
-
-            console.log('[SCA] ✅ UserOp sent! Hash:', userOpHash)
-            break
-          } catch (sendErr: any) {
-            const errMsg = sendErr?.message || sendErr?.details || String(sendErr)
-            const isMemPoolFull = errMsg.includes('Max operations') && errMsg.includes('unstaked')
-
-            console.warn(`[SCA] Attempt ${attempt} failed:`, errMsg.slice(0, 200))
-
-            if (isMemPoolFull && attempt < maxSendRetries) {
-              const waitSec = Math.round((retryBaseDelay * attempt) / 1000)
-              console.log(`[SCA] Bundler mempool full (4 pending ops). Waiting ${waitSec}s...`)
-              toast.loading(
-                `Bundler queue full — waiting for pending ops to clear (${waitSec}s)... Try ${attempt}/${maxSendRetries}`,
-                { id: 'passkey-tx' }
-              )
-              await new Promise(resolve => setTimeout(resolve, retryBaseDelay * attempt))
-              continue
-            }
-
-            // Fatal error — release lock and throw
-            txLockRef.current = false
-            if (isMemPoolFull) {
-              toast.error(
-                'Bundler has too many pending transactions for this account. ' +
-                'Wait 2-3 minutes for previous operations to clear, then try again.',
-                { id: 'passkey-tx', duration: 8000 }
-              )
-              throw new Error('Bundler mempool full: max pending operations reached. Please wait and retry.')
-            }
-            toast.error(`Transaction rejected: ${sendErr?.shortMessage || errMsg.slice(0, 120)}`, { id: 'passkey-tx' })
-            throw sendErr
-          }
-        }
-
-        if (!userOpHash) {
-          txLockRef.current = false
-          throw new Error('Failed to submit UserOperation after all retries')
-        }
-
-        // --- POLL FOR RECEIPT ---
-        toast.loading(`UserOp sent! Waiting for on-chain confirmation...`, { id: 'passkey-tx' })
-        let receiptData: any = null
-        const maxPollAttempts = 60
-        const pollDelay = 3000
-
-        for (let poll = 1; poll <= maxPollAttempts; poll++) {
-          try {
-            receiptData = await bundlerClient.request({
-              method: 'eth_getUserOperationReceipt' as any,
-              params: [userOpHash] as any
-            })
-            if (receiptData) {
-              console.log(`[SCA] ✅ Receipt found on poll ${poll}:`, receiptData)
-              break
-            }
-            console.log(`[SCA] Poll ${poll}/${maxPollAttempts}: pending`)
-            if (poll % 5 === 0) {
-              toast.loading(`Confirming on-chain... (${poll}/${maxPollAttempts})`, { id: 'passkey-tx' })
-            }
-          } catch (e: any) {
-            console.warn(`[SCA] Poll ${poll} error:`, e.message || e)
-          }
-          await new Promise(resolve => setTimeout(resolve, pollDelay))
-        }
+        // Wait for receipt using the standard SDK method
+        const { receipt } = await bundlerClient.waitForUserOperationReceipt({
+          hash: userOpHash,
+          timeout: 120_000, // 2 minutes (Arc has sub-second finality)
+          pollingInterval: 2_000,
+        })
+        const txHash = receipt.transactionHash
 
         txLockRef.current = false
-
-        if (!receiptData) {
-          console.error('[SCA] ❌ Receipt polling timed out')
-          toast.error('Transaction submitted but confirmation timed out. Check the explorer.', { id: 'passkey-tx', duration: 8000 })
-          throw new Error(`UserOp ${userOpHash} submitted but not confirmed within 3 minutes.`)
-        }
-
-        const txHash = receiptData.receipt?.transactionHash || receiptData.transactionHash || receiptData.hash
         console.log('[SCA] 🎉 Confirmed! TxHash:', txHash)
-        toast.success(`Transaction confirmed! ${txHash.slice(0, 10)}...`, { id: 'passkey-tx' })
+        toast.success(`Transaction confirmed!`, { id: 'passkey-tx' })
 
         // Persist to localStorage for immediate frontend display
         const localHistoryKey = `tx_history_${passkeyEmail}`
@@ -400,10 +325,26 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
         return txHash
       } catch (err: any) {
         txLockRef.current = false
-        console.error('[SCA] ❌ Execution failed:', err)
-        if (!err.message?.includes('mempool full') && !err.message?.includes('already in progress')) {
-          toast.error(`Execution failed: ${err?.shortMessage || err.message || err}`, { id: 'passkey-tx' })
+        console.error('[SCA] ❌ Failed:', err)
+
+        const errMsg = err?.message || err?.details || String(err)
+        const isMemPoolFull = errMsg.includes('Max operations') && errMsg.includes('unstaked')
+
+        if (isMemPoolFull) {
+          // Previous operations with wrong gas prices are stuck in mempool.
+          // The only fix is to wait for them to expire or use a fresh account.
+          toast.error(
+            'Previous transactions are stuck in the bundler queue. ' +
+            'Please log out, wait 5 minutes, then log back in to clear the queue.',
+            { id: 'passkey-tx', duration: 10000 }
+          )
+          throw new Error(
+            'Bundler mempool full: previous operations with incorrect gas prices are stuck. ' +
+            'Log out, wait 5 min, and re-login to clear.'
+          )
         }
+
+        toast.error(`Transaction failed: ${err?.shortMessage || errMsg.slice(0, 150)}`, { id: 'passkey-tx' })
         throw err
       }
     }
