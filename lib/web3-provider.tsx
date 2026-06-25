@@ -265,13 +265,25 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
         }
       }
 
+      console.log('[SCA Debug] 🚀 Starting writeContractAsync for Passkey Wallet:', {
+        passkeyAddress,
+        passkeyEmail,
+        targetContract: args.address,
+        functionName: args.functionName,
+        arguments: args.args
+      })
       toast.loading('Preparing secure biometric signature...', { id: 'passkey-tx' })
       try {
+        console.log('[SCA Debug] Encoding contract function call data...')
         const callData = encodeFunctionData({
           abi: args.abi,
           functionName: args.functionName,
           args: args.args,
         })
+        console.log('[SCA Debug] Generated CallData (hex):', callData)
+
+        console.log('[SCA Debug] Sending User Operation request to Circle Bundler at:', clientUrl)
+        toast.loading('Submitting transaction to bundler...', { id: 'passkey-tx' })
 
         const userOpHash = await bundlerClient.sendUserOperation({
           account: activeAccount,
@@ -284,16 +296,55 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
           maxFeePerGas: 15000000000n, // 15 Gwei max fee
         })
         
-        toast.loading('Awaiting on-chain settlement confirmation...', { id: 'passkey-tx' })
-        
-        const { receipt } = await bundlerClient.waitForUserOperationReceipt({
-          hash: userOpHash,
-          timeout: 180_000,
-          pollingInterval: 3_000,
-        })
-        const txHash = receipt.transactionHash
+        console.log('[SCA Debug] User Operation successfully sent! hash:', userOpHash)
+        console.log(`[SCA Debug] You can track the user operation status at: ${clientUrl}/user-ops/${userOpHash}`)
+        toast.loading(`User Op sent! Hash: ${userOpHash.slice(0, 10)}...`, { id: 'passkey-tx' })
 
-        toast.success('System settlement completed successfully!', { id: 'passkey-tx' })
+        // Custom detailed polling loop for tracking state progression
+        console.log('[SCA Debug] Starting polling loop for User Operation Receipt...')
+        let receiptData: any = null
+        let attempts = 0
+        const maxAttempts = 60 // 3 minutes total
+        const delayMs = 3000
+
+        while (!receiptData && attempts < maxAttempts) {
+          attempts++
+          console.log(`[SCA Debug] Polling attempt ${attempts}/${maxAttempts} for userOp: ${userOpHash}`)
+          try {
+            // Check status via getUserOperationByHash first
+            const opDetails = await bundlerClient.request({
+              method: 'eth_getUserOperationByHash' as any,
+              params: [userOpHash] as any
+            })
+            console.log(`[SCA Debug] getUserOperationByHash response (Attempt ${attempts}):`, opDetails)
+
+            // Try getting the receipt
+            receiptData = await bundlerClient.request({
+              method: 'eth_getUserOperationReceipt' as any,
+              params: [userOpHash] as any
+            })
+            
+            if (receiptData) {
+              console.log('[SCA Debug] User Operation Receipt retrieved! Details:', receiptData)
+              break
+            } else {
+              console.log('[SCA Debug] Receipt is still null. User operation is pending inclusion.')
+              toast.loading(`Waiting for block inclusion... (Attempt ${attempts}/${maxAttempts})`, { id: 'passkey-tx' })
+            }
+          } catch (e: any) {
+            console.warn(`[SCA Debug] Query error on attempt ${attempts}:`, e.message || e)
+          }
+          await new Promise(resolve => setTimeout(resolve, delayMs))
+        }
+
+        if (!receiptData) {
+          console.error('[SCA Debug] Polling timed out. User operation is still pending.')
+          throw new Error(`Timed out waiting for User Operation ${userOpHash} to be confirmed. It remains pending in the bundler mempool.`)
+        }
+
+        const txHash = receiptData.receipt?.transactionHash || receiptData.transactionHash || receiptData.hash
+        console.log('[SCA Debug] System settlement completed successfully! Transaction Hash:', txHash)
+        toast.success(`Success! Tx Hash: ${txHash.slice(0, 10)}...`, { id: 'passkey-tx' })
 
         // Save to localStorage history so it displays instantly on frontend
         const localHistoryKey = `tx_history_${passkeyEmail}`
@@ -310,7 +361,7 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
 
         return txHash
       } catch (err: any) {
-        console.error('SCA Execution Error:', err)
+        console.error('[SCA Debug] Execution failed with error:', err)
         toast.error(`Execution failed: ${err.message || err}`, { id: 'passkey-tx' })
         throw err
       }
