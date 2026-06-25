@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         eligible: false,
         reason: `Function '${functionName}' is not eligible for gas sponsorship.`
-      }, { status: 400 })
+      })
     }
 
     // 2. Determine Client IP for rate limiting
@@ -27,8 +27,9 @@ export async function POST(req: Request) {
     if (count >= 3) {
       return NextResponse.json({
         eligible: false,
+        txCount: count,
         reason: 'Sponsorship limit reached (max 3 sponsored transactions per user/IP).'
-      }, { status: 403 })
+      })
     }
 
     // 4. (Optional) Validate recaptcha / OAuth if present
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         eligible: false,
         reason: 'Security verification failed (Recaptcha invalid).'
-      }, { status: 400 })
+      })
     }
 
     // 5. If eligible, record the sponsorship event

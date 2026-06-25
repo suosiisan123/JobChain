@@ -81,7 +81,7 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
         setSponsorshipRemaining(3 - (data.txCount - 1))
       } else {
         setIsRegisterSponsored(false)
-        if (res.status === 403) {
+        if (res.status === 403 || data.txCount >= 3 || !data.eligible) {
           setSponsorshipRemaining(0)
         }
       }
