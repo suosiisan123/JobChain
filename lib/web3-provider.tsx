@@ -286,7 +286,11 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
         
         toast.loading('Awaiting on-chain settlement confirmation...', { id: 'passkey-tx' })
         
-        const { receipt } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash })
+        const { receipt } = await bundlerClient.waitForUserOperationReceipt({
+          hash: userOpHash,
+          timeout: 180_000,
+          pollingInterval: 3_000,
+        })
         const txHash = receipt.transactionHash
 
         toast.success('System settlement completed successfully!', { id: 'passkey-tx' })
