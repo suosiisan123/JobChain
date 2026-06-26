@@ -367,7 +367,7 @@ export function TerminalTab() {
       onLogs: (logs) => {
         for (const log of logs) {
           const args = log.args as any
-          addEvent('APPROVED', `Job #${args.jobId} clearance approved with rating ★${Number(args.rating)}.`, log.transactionHash, Number(log.blockNumber), 'prov-1')
+          addEvent('APPROVED', `Job #${args.jobId} clearance approved with rating ${Number(args.rating)}/5 stars.`, log.transactionHash, Number(log.blockNumber), 'prov-1')
         }
       },
     })

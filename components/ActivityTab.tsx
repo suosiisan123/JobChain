@@ -370,7 +370,7 @@ export function ActivityTab({ devMode }: ActivityTabProps) {
       onLogs: (logs) => {
         for (const log of logs) {
           const args = log.args as any
-          addEvent('APPROVED', `Task #${args.jobId} clearance settled successfully. Rating: ★${Number(args.rating)}.`, log.transactionHash, Number(log.blockNumber), 'prov-1')
+          addEvent('APPROVED', `Task #${args.jobId} clearance settled successfully. Rating: ${Number(args.rating)}/5 stars.`, log.transactionHash, Number(log.blockNumber), 'prov-1')
         }
       },
     })

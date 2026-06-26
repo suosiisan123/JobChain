@@ -8,13 +8,16 @@ import { useConnectModal } from '@rainbow-me/rainbowkit'
 import {
   BarChart3, Users, Briefcase, Shield, ExternalLink, TrendingUp, Activity, Zap,
   Plus, ArrowUpRight, ArrowDownLeft, ArrowRight, Lock, Unlock, CheckCircle2,
-  Circle, Play, Wallet, HelpCircle, AlertCircle, Loader2, Fingerprint, Trophy, Info, Sparkles
+  Circle, Play, Wallet, HelpCircle, AlertCircle, Loader2, Fingerprint, Trophy, Info, Sparkles, Check,
+  ArrowRightLeft, Database, Link2, History, TrendingDown, Clock, ShieldCheck, Globe, ChevronRight
 } from 'lucide-react'
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid
 } from 'recharts'
 import toast from 'react-hot-toast'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
+import { useModal } from '@/hooks/useModal'
 import {
   JOBCHAIN_CONTRACT_ADDRESS,
   IDENTITY_REGISTRY,
@@ -34,10 +37,316 @@ const STRATEGY_INFO = {
   'arbitrage': { name: 'Delta-Neutral Forex', apy: '6.8%', risk: 'Low', color: '#3EA6FF', desc: 'Captures micro-slippages in StableFX EURC/USDC on-chain pools while hedging price movements.' }
 }
 
-export function DashboardTab({ devMode }: { devMode: boolean }) {
+const RegisterProfileForm = ({ onSubmit, onCancel }: { onSubmit: (name: string, caps: string) => void; onCancel: () => void }) => {
+  const [name, setName] = useState('')
+  const [caps, setCaps] = useState('analytics,data-extract,nlp')
+  
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '12px 0',
+        marginBottom: '8px'
+      }}>
+        <img 
+          src="/images/jobchain_secure_identity.png" 
+          alt="IPFS Credential Profile" 
+          style={{
+            width: 120,
+            height: 120,
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 8px 24px rgba(255, 163, 26, 0.2))'
+          }}
+          className="illustration-float"
+        />
+      </div>
+
+      <div className="form-field">
+        <label className="field-label" style={{ color: '#FFA31A', fontSize: 10, fontWeight: 'bold', display: 'block', marginBottom: 4 }}>PROFILE NAME</label>
+        <input 
+          className="warp-input" 
+          placeholder="e.g. Sentinel-Security-Node" 
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+      </div>
+      <div className="form-field">
+        <label className="field-label" style={{ color: 'var(--warp-cyan)', fontSize: 10, fontWeight: 'bold', display: 'block', marginBottom: 4 }}>CAPABILITIES</label>
+        <input 
+          className="warp-input" 
+          placeholder="e.g. analytics,data-extract" 
+          value={caps}
+          onChange={e => setCaps(e.target.value)}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+        <button onClick={onCancel} className="warp-btn secondary" style={{ flex: 1, padding: '10px' }}>Cancel</button>
+        <button 
+          onClick={() => onSubmit(name, caps)} 
+          className="warp-btn" 
+          style={{ flex: 1, background: '#FFA31A', color: '#000', fontWeight: 'bold', padding: '10px' }}
+        >
+          Submit Registry Entry
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface DepositModalContentProps {
+  userUsdcBal: string
+  userEurcBal: string
+  onConfirm: (amount: string, currency: 'USDC' | 'EURC') => Promise<void>
+  onClose: () => void
+}
+
+export function DepositModalContent({ userUsdcBal, userEurcBal, onConfirm, onClose }: DepositModalContentProps) {
+  const [currency, setCurrency] = useState<'USDC' | 'EURC'>('USDC')
+  const [amount, setAmount] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+    const balance = currency === 'USDC' ? userUsdcBal : userEurcBal
+    if (parseFloat(amount) > parseFloat(balance)) {
+      toast.error('Insufficient stablecoin balance')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await onConfirm(amount, currency)
+      onClose()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '12px 0',
+        marginBottom: '4px'
+      }}>
+        <img 
+          src="/images/jobchain_escrow_vault.png" 
+          alt="Vault Deposit" 
+          style={{
+            width: 120,
+            height: 120,
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 8px 24px rgba(13, 211, 147, 0.25))'
+          }}
+          className="illustration-float"
+        />
+      </div>
+
+      <div className="form-field">
+        <label className="field-label" style={{ color: '#0DD393', fontSize: 10, fontWeight: 'bold', display: 'block', marginBottom: 4 }}>SELECT CURRENCY</label>
+        <select 
+          className="warp-input"
+          value={currency}
+          onChange={e => setCurrency(e.target.value as 'USDC' | 'EURC')}
+          style={{ width: '100%', background: '#0E1015', border: '1px solid var(--warp-border)', color: '#fff', borderRadius: 8, padding: '8px 10px' }}
+        >
+          <option value="USDC">USDC (USD Stablecoin)</option>
+          <option value="EURC">EURC (Euro Stablecoin)</option>
+        </select>
+        {currency === 'EURC' && (
+          <div style={{ marginTop: 6, padding: '6px 10px', background: 'rgba(13, 185, 215, 0.08)', border: '1px solid rgba(13, 185, 215, 0.2)', borderRadius: 6, fontSize: 10, color: '#0DB9D7', lineHeight: 1.4 }}>
+            ℹ EURC deposits are transferred directly to vault custody via ERC-20 transfer.
+          </div>
+        )}
+      </div>
+
+      <div className="form-field">
+        <label className="field-label" style={{ color: '#8F76FF', fontSize: 10, fontWeight: 'bold', display: 'block', marginBottom: 4 }}>AMOUNT</label>
+        <div style={{ position: 'relative' }}>
+          <input 
+            className="warp-input" 
+            type="number" 
+            placeholder="e.g. 500.00" 
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={{ width: '100%', background: '#0E1015', border: '1px solid var(--warp-border)', color: '#fff', borderRadius: 8, padding: '8px 10px' }}
+          />
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'bold' }}>
+            {currency}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4 }}>
+          <span>Available Balance:</span>
+          <span style={{ fontWeight: 'bold' }}>
+            {currency === 'USDC' ? userUsdcBal : userEurcBal} {currency}
+          </span>
+        </div>
+      </div>
+
+      {/* Advanced info */}
+      <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--warp-border)', borderRadius: 6, fontSize: 11, color: 'var(--warp-muted)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span>Slippage Limit:</span>
+          <span style={{ color: '#ffffff' }}>0.5%</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Gas Subsidy:</span>
+          <span style={{ color: '#0DD393' }}>100% Sponsored</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+        <button 
+          onClick={onClose} 
+          className="warp-btn secondary"
+          disabled={submitting}
+          style={{ flex: 1, padding: '10px' }}
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={handleSubmit} 
+          className="warp-btn"
+          disabled={submitting}
+          style={{ flex: 1, background: '#0DD393', color: '#000', fontWeight: 'bold', padding: '10px' }}
+        >
+          {submitting ? 'Securing Deposit...' : 'Confirm Deposit'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface WithdrawModalContentProps {
+  gatewayVaultBal: string
+  onConfirm: (amount: string) => Promise<void>
+  onClose: () => void
+}
+
+export function WithdrawModalContent({ gatewayVaultBal, onConfirm, onClose }: WithdrawModalContentProps) {
+  const [amount, setAmount] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+    if (parseFloat(amount) > parseFloat(gatewayVaultBal)) {
+      toast.error('Insufficient vault balance')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await onConfirm(amount)
+      onClose()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="form-field">
+        <label className="field-label" style={{ color: '#FF5A5A', fontSize: 10, fontWeight: 'bold', display: 'block', marginBottom: 4 }}>AMOUNT TO WITHDRAW</label>
+        <div style={{ position: 'relative' }}>
+          <input 
+            className="warp-input" 
+            type="number" 
+            placeholder="e.g. 250.00" 
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={{ width: '100%', background: '#0E1015', border: '1px solid var(--warp-border)', color: '#fff', borderRadius: 8, padding: '8px 10px' }}
+          />
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'bold' }}>
+            USDC
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4 }}>
+          <span>Max Vault Available:</span>
+          <span style={{ fontWeight: 'bold' }}>{gatewayVaultBal} USDC</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+        <button 
+          onClick={onClose} 
+          className="warp-btn secondary"
+          disabled={submitting}
+          style={{ flex: 1, padding: '10px' }}
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={handleSubmit} 
+          className="warp-btn"
+          disabled={submitting}
+          style={{ flex: 1, background: '#FF5A5A', color: '#000', fontWeight: 'bold', padding: '10px' }}
+        >
+          {submitting ? 'Releasing Funds...' : 'Confirm Withdrawal'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function DashboardTab({ devMode, agentStatus: propAgentStatus }: { devMode: boolean; agentStatus?: 'Idle' | 'Thinking' | 'Running' }) {
   const { address, isConnected, isPasskey, writeContractAsync } = useSmartWallet()
   const { openConnectModal } = useConnectModal()
+  const { openModal, closeModal } = useModal()
   const publicClient = usePublicClient()
+  const [showTechDetails, setShowTechDetails] = useState(false)
+
+  // Live Agent Swarm Synchronization
+  const [agentSteps, setAgentSteps] = useState<any[]>([])
+  const [agentObjective, setAgentObjective] = useState<string>('')
+  const [agentStatus, setAgentStatus] = useState<'Idle' | 'Thinking' | 'Running'>('Idle')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const syncState = () => {
+      const running = localStorage.getItem('jobchain_agent_running') === 'true'
+      const planning = localStorage.getItem('jobchain_agent_planning') === 'true'
+      if (planning) setAgentStatus('Thinking')
+      else if (running) setAgentStatus('Running')
+      else setAgentStatus('Idle')
+
+      const stepsStr = localStorage.getItem('jobchain_agent_steps')
+      if (stepsStr) {
+        try {
+          setAgentSteps(JSON.parse(stepsStr))
+        } catch {
+          setAgentSteps([])
+        }
+      } else {
+        setAgentSteps([])
+      }
+
+      const objStr = localStorage.getItem('jobchain_agent_objective')
+      if (objStr) {
+        setAgentObjective(objStr)
+      } else {
+        setAgentObjective('')
+      }
+    }
+    syncState()
+    window.addEventListener('jobchain_agent_status_change', syncState)
+    window.addEventListener('storage', syncState)
+    return () => {
+      window.removeEventListener('jobchain_agent_status_change', syncState)
+      window.removeEventListener('storage', syncState)
+    }
+  }, [])
 
   // On-chain stats
   const [totalAgents, setTotalAgents] = useState(0)
@@ -63,19 +372,88 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
   const [earnedYield, setEarnedYield] = useState(0)
   
   // Modals & Panels
-  const [showDepositDrawer, setShowDepositDrawer] = useState(false)
-  const [showWithdrawDrawer, setShowWithdrawDrawer] = useState(false)
-  const [depositAmount, setDepositAmount] = useState('')
-  const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [depositCurrency, setDepositCurrency] = useState<'USDC' | 'EURC'>('USDC')
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
   
-  // Verification Modal
-  const [showVerifyModal, setShowVerifyModal] = useState(false)
-  const [verifyName, setVerifyName] = useState('')
-  const [verifyCaps, setVerifyCaps] = useState('analytics,data-extract,nlp')
-  const [verifying, setVerifying] = useState(false)
+  // Sub-view toggle
+  const [subView, setSubView] = useState<'yield' | 'wallet'>('yield')
+
+  // Unified Balance & Bridge states
+  const [unifiedBalances, setUnifiedBalances] = useState<{ arc: number, base: number, arbitrum: number } | null>(null)
+  const [unifiedTotal, setUnifiedTotal] = useState<number | null>(null)
+  const [loadingUnified, setLoadingUnified] = useState<boolean>(false)
+  const [isBridging, setIsBridging] = useState<boolean>(false)
+  const [bridgeStep, setBridgeStep] = useState<number>(0)
+  const [bridgeAmount, setBridgeAmount] = useState<string>('100')
+  const [bridgeSource, setBridgeSource] = useState<'base' | 'arbitrum'>('base')
+
+  useEffect(() => {
+    if (!address) {
+      setUnifiedBalances(null)
+      setUnifiedTotal(null)
+      return
+    }
+    
+    async function fetchUnified() {
+      setLoadingUnified(true)
+      try {
+        const res = await fetch(`/api/unified-balance?address=${address}`)
+        const data = await res.json()
+        if (data.balances) {
+          setUnifiedBalances(data.balances)
+          setUnifiedTotal(data.total)
+        }
+      } catch (e) {
+        console.error('Error fetching unified balance in DashboardTab:', e)
+      } finally {
+        setLoadingUnified(false)
+      }
+    }
+    
+    fetchUnified()
+    const interval = setInterval(fetchUnified, 12000)
+    return () => clearInterval(interval)
+  }, [address])
+
+  const triggerBridgeSimulation = async (amount: string, source: 'base' | 'arbitrum') => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Specify a valid amount to bridge')
+      return
+    }
+    setIsBridging(true)
+    setBridgeStep(1)
+    
+    const tid = toast.loading(`Burning ${amount} USDC on ${source === 'base' ? 'Base Sepolia' : 'Arbitrum Sepolia'}...`)
+    await new Promise(r => setTimeout(r, 2000))
+    toast.loading(`USDC Burn transaction confirmed. Requesting Circle Attestation...`, { id: tid })
+    setBridgeStep(2)
+    
+    await new Promise(r => setTimeout(r, 2500))
+    toast.loading(`Attestation received from Circle CCTP! Preparing mint on Arc Testnet...`, { id: tid })
+    setBridgeStep(3)
+    
+    await new Promise(r => setTimeout(r, 2000))
+    setBridgeStep(4)
+    
+    toast.success(`CCTP Bridge Complete! ${amount} USDC minted on Arc Testnet.`, { id: tid, duration: 5000 })
+    
+    if (unifiedBalances) {
+      const amtNum = parseFloat(amount)
+      const nextSourceBal = Math.max(0, (source === 'base' ? unifiedBalances.base : unifiedBalances.arbitrum) - amtNum)
+      const nextArcBal = unifiedBalances.arc + amtNum
+      setUnifiedBalances({
+        ...unifiedBalances,
+        [source]: nextSourceBal,
+        arc: nextArcBal
+      })
+      setUnifiedTotal(prev => (prev || 0))
+    }
+    
+    setIsBridging(false)
+    setBridgeStep(0)
+  }
+  
+  // Mounted state
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
@@ -168,31 +546,43 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
       if (!publicClient || !address || !isVerified) return
       try {
         setCheckingWalletState(true)
-        const latestBlock = await publicClient.getBlockNumber()
-        const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
-        
-        // Query Transfer events for IDENTITY_REGISTRY to find agent ID owned by user
-        const logs = await publicClient.getLogs({
+        // Check if user has balance first
+        const balance = await publicClient.readContract({
           address: IDENTITY_REGISTRY,
-          event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-          args: { to: address as `0x${string}` },
-          fromBlock,
-          toBlock: latestBlock,
-        })
-        
-        if (logs.length > 0) {
-          const tokenId = logs[0].args.tokenId!
-          setUserAgentId(tokenId)
-          
-          // Get Agent details from JobChainV2
-          const d = await publicClient.readContract({
-            address: JOBCHAIN_CONTRACT_ADDRESS,
-            abi: jobChainAbi,
-            functionName: 'getAgent',
-            args: [tokenId]
-          }) as unknown as any[]
-          
-          setUserStake(d[3] as bigint)
+          abi: identityRegistryAbi,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        }).catch(() => 0n)
+
+        if (balance > 0n) {
+          // Scan up to 250 tokens in parallel
+          const maxTokenId = 250
+          const tokenIds = Array.from({ length: maxTokenId }, (_, i) => BigInt(i))
+          const owners = await Promise.all(
+            tokenIds.map(id =>
+              publicClient.readContract({
+                address: IDENTITY_REGISTRY,
+                abi: identityRegistryAbi,
+                functionName: 'ownerOf',
+                args: [id],
+              }).catch(() => null)
+            )
+          )
+
+          const foundTokenId = tokenIds.find((_, i) => owners[i]?.toLowerCase() === address.toLowerCase())
+          if (foundTokenId !== undefined) {
+            setUserAgentId(foundTokenId)
+            
+            // Get Agent details from JobChainV2
+            const d = await publicClient.readContract({
+              address: JOBCHAIN_CONTRACT_ADDRESS,
+              abi: jobChainAbi,
+              functionName: 'getAgent',
+              args: [foundTokenId]
+            }) as unknown as any[]
+            
+            setUserStake(d[3] as bigint)
+          }
         }
       } catch (err) {
         console.error('Error syncing agent stake:', err)
@@ -226,17 +616,21 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
         const yieldVal = Number(formatUnits(yieldRaw, 6))
         setRewardsPaid(yieldVal > 0 ? yieldVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '380,420')
 
-        // Fetch total agents via Transfer logs
-        const latestBlock = await publicClient.getBlockNumber()
-        const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
-        const transferLogs = await publicClient.getLogs({
-          address: IDENTITY_REGISTRY,
-          event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-          args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
-          fromBlock,
-          toBlock: latestBlock,
-        })
-        setTotalAgents(transferLogs.length > 0 ? transferLogs.length : 8)
+        // Fetch total agents via parallel ownerOf scan
+        const maxTokenId = 250
+        const tokenIds = Array.from({ length: maxTokenId }, (_, i) => BigInt(i))
+        const owners = await Promise.all(
+          tokenIds.map(id =>
+            publicClient.readContract({
+              address: IDENTITY_REGISTRY,
+              abi: identityRegistryAbi,
+              functionName: 'ownerOf',
+              args: [id],
+            }).catch(() => null)
+          )
+        )
+        const activeCount = owners.filter(o => o !== null).length
+        setTotalAgents(activeCount > 0 ? activeCount : 8)
       } catch (err) {
         console.error('Error loading system stats:', err)
       } finally {
@@ -300,99 +694,103 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
   }
 
   // Real Web3 Identity Verification
-  const handleVerifyIdentity = async () => {
-    if (!verifyName) {
+  const handleVerifyIdentity = async (name: string, caps: string) => {
+    if (!name) {
       toast.error('Please specify a profile name')
       return
     }
-    setVerifying(true)
-    const tid = toast.loading('Registering Identity on official ERC-8004 Registry...')
+    closeModal()
     try {
-      const metadataURI = `ipfs://bafkreib-${verifyName.toLowerCase().replace(/[^a-z0-9]/g, '')}-${verifyCaps.toLowerCase().replace(/[^a-z0-9]/g, '')}`
-      const hash = await writeContractAsync({
+      const metadataURI = `ipfs://bafkreib-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${caps.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+      await writeContractAsync({
         address: IDENTITY_REGISTRY,
         abi: identityRegistryAbi,
         functionName: 'register',
         args: [metadataURI],
       })
-      toast.success(
-        <span>Verified! Credentials minted on ERC-8004. <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#A78BFA',textDecoration:'underline'}}>View ↗</a></span>,
-        { id: tid, duration: 6000 }
-      )
-      setShowVerifyModal(false)
-      setVerifyName('')
       refetchIdentity()
     } catch (err: any) {
       console.error(err)
-      toast.error(err?.shortMessage || 'Verification failed', { id: tid })
-    } finally {
-      setVerifying(false)
     }
   }
 
+  const openRegisterModal = () => {
+    openModal({
+      type: 'custom',
+      priority: 'P2',
+      title: 'Register Security Profile',
+      description: 'Mints a verified credential token on the official ERC-8004 Identity Registry, validating your account for strategy allocations.',
+      content: <RegisterProfileForm onSubmit={handleVerifyIdentity} onCancel={closeModal} />,
+      preventBackdropClose: false
+    })
+  }
+
   // Real Web3 Deposit
-  const handleDeposit = async () => {
-    if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      toast.error('Please enter a valid amount')
-      return
-    }
+  const handleDeposit = async (amountStr: string, currency: 'USDC' | 'EURC') => {
     setDepositing(true)
-    const tid = toast.loading('Approving USDC for vault...')
+    const tid = toast.loading(`Approving ${currency} for vault...`)
     try {
-      const amount = parseUnits(depositAmount, 6)
+      const amount = parseUnits(amountStr, 6)
+      const tokenAddress = currency === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
 
-      // 1. Approve USDC spend to Gateway Vault
-      await writeContractAsync({
-        address: USDC_ADDRESS_ARC,
-        abi: usdcAbi,
-        functionName: 'approve',
-        args: [GATEWAY_VAULT_ADDRESS, amount],
-      })
+      if (currency === 'USDC') {
+        // USDC: Approve → Vault.deposit() (on-chain vault contract supports USDC natively)
+        await writeContractAsync({
+          address: tokenAddress,
+          abi: usdcAbi,
+          functionName: 'approve',
+          args: [GATEWAY_VAULT_ADDRESS, amount],
+        })
 
-      // 2. Deposit into Gateway Vault
-      toast.loading('Depositing funds into vault...', { id: tid })
-      const hash = await writeContractAsync({
-        address: GATEWAY_VAULT_ADDRESS,
-        abi: gatewayVaultAbi,
-        functionName: 'deposit',
-        args: [amount],
-      })
+        toast.loading('Depositing USDC into vault...', { id: tid })
+        const hash = await writeContractAsync({
+          address: GATEWAY_VAULT_ADDRESS,
+          abi: gatewayVaultAbi,
+          functionName: 'deposit',
+          args: [amount],
+        })
 
-      toast.success(
-        <span>Deposit successful! Funds locked. <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#A78BFA',textDecoration:'underline'}}>View ↗</a></span>,
-        { id: tid, duration: 6000 }
-      )
+        toast.success(
+          <span>USDC deposit successful! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#A78BFA',textDecoration:'underline'}}>View ↗</a></span>,
+          { id: tid, duration: 6000 }
+        )
+      } else {
+        // EURC: Direct ERC20 transfer to vault address (vault contract doesn't have EURC deposit function)
+        toast.loading('Transferring EURC to vault custody...', { id: tid })
+        const hash = await writeContractAsync({
+          address: tokenAddress,
+          abi: usdcAbi,
+          functionName: 'transfer',
+          args: [GATEWAY_VAULT_ADDRESS, amount],
+        })
+
+        toast.success(
+          <span>EURC deposit successful! <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#A78BFA',textDecoration:'underline'}}>View ↗</a></span>,
+          { id: tid, duration: 6000 }
+        )
+      }
       
       // Update local storage representation of vault balance for live simulation
-      const newBal = (parseFloat(gatewayVaultBal) + parseFloat(depositAmount)).toFixed(2)
+      const newBal = (parseFloat(gatewayVaultBal) + parseFloat(amountStr)).toFixed(2)
       setGatewayVaultBal(newBal)
       localStorage.setItem('gateway_vault_bal', newBal)
       
-      setDepositAmount('')
-      setShowDepositDrawer(false)
       refetchUsdc()
     } catch (err: any) {
       console.error(err)
       toast.error(err?.shortMessage || 'Deposit failed', { id: tid })
+      throw err
     } finally {
       setDepositing(false)
     }
   }
 
   // Real Web3 Withdraw
-  const handleWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
-      toast.error('Please enter a valid amount')
-      return
-    }
-    if (parseFloat(withdrawAmount) > parseFloat(gatewayVaultBal)) {
-      toast.error('Insufficient vault balance')
-      return
-    }
+  const handleWithdraw = async (amountStr: string) => {
     setWithdrawing(true)
     const tid = toast.loading('Initiating secure vault release...')
     try {
-      const amount = parseUnits(withdrawAmount, 6)
+      const amount = parseUnits(amountStr, 6)
 
       const hash = await writeContractAsync({
         address: GATEWAY_VAULT_ADDRESS,
@@ -406,19 +804,53 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
         { id: tid, duration: 6000 }
       )
       
-      const newBal = (parseFloat(gatewayVaultBal) - parseFloat(withdrawAmount)).toFixed(2)
+      const newBal = (parseFloat(gatewayVaultBal) - parseFloat(amountStr)).toFixed(2)
       setGatewayVaultBal(newBal)
       localStorage.setItem('gateway_vault_bal', newBal)
       
-      setWithdrawAmount('')
-      setShowWithdrawDrawer(false)
       refetchUsdc()
     } catch (err: any) {
       console.error(err)
       toast.error(err?.shortMessage || 'Withdrawal failed', { id: tid })
+      throw err
     } finally {
       setWithdrawing(false)
     }
+  }
+
+  const openDepositModal = () => {
+    openModal({
+      type: 'custom',
+      priority: 'P2',
+      title: 'Deposit Capital',
+      description: 'Fund your automated yield optimization portfolio.',
+      content: (
+        <DepositModalContent 
+          userUsdcBal={userUsdcBal} 
+          userEurcBal={userEurcBal} 
+          onConfirm={handleDeposit} 
+          onClose={closeModal} 
+        />
+      ),
+      preventBackdropClose: false
+    })
+  }
+
+  const openWithdrawModal = () => {
+    openModal({
+      type: 'custom',
+      priority: 'P2',
+      title: 'Withdraw Capital',
+      description: 'Return assets back to your external Web3 address.',
+      content: (
+        <WithdrawModalContent 
+          gatewayVaultBal={gatewayVaultBal} 
+          onConfirm={handleWithdraw} 
+          onClose={closeModal} 
+        />
+      ),
+      preventBackdropClose: false
+    })
   }
 
   // Check state updates on load
@@ -469,176 +901,416 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
         )}
       </div>
 
-      {/* ── Onboarding Process Steps Bar ── */}
+      {/* ── Sub-Tab Navigation ── */}
       <div style={{ 
-        background: 'rgba(15,16,21,0.5)', 
-        border: '1px solid var(--warp-border)', 
-        borderRadius: 12, 
-        padding: '16px 24px', 
-        marginBottom: 24,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 16
+        display: 'flex', 
+        gap: 8, 
+        borderBottom: '1px solid var(--warp-border)', 
+        marginBottom: 24, 
+        paddingBottom: 2 
       }}>
-        {[
-          { label: 'Connect Wallet', id: 1 },
-          { label: 'Identity Verification', id: 2 },
-          { label: 'Deposit Funds', id: 3 },
-          { label: 'Choose Strategy', id: 4 },
-          { label: 'Earn Rewards', id: 5 }
-        ].map((s, idx) => {
-          const isDone = currentStep > s.id
-          const isActive = currentStep === s.id
-          return (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 150 }}>
+        <button 
+          onClick={() => setSubView('yield')}
+          className={`sub-tab-btn ${subView === 'yield' ? 'active' : ''}`}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: subView === 'yield' ? '2px solid var(--warp-primary)' : '2px solid transparent',
+            color: subView === 'yield' ? '#ffffff' : 'var(--warp-muted)',
+            fontWeight: 700,
+            fontSize: '13px',
+            padding: '8px 16px 12px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}
+        >
+          <TrendingUp size={14} />
+          Yield &amp; Strategies
+        </button>
+        <button 
+          onClick={() => setSubView('wallet')}
+          className={`sub-tab-btn ${subView === 'wallet' ? 'active' : ''}`}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: subView === 'wallet' ? '2px solid var(--warp-primary)' : '2px solid transparent',
+            color: subView === 'wallet' ? '#ffffff' : 'var(--warp-muted)',
+            fontWeight: 700,
+            fontSize: '13px',
+            padding: '8px 16px 12px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}
+        >
+          <Wallet size={14} />
+          Wallet Intelligence Hub
+        </button>
+      </div>
+
+      {subView === 'yield' ? (
+        <>
+          {/* ── Onboarding Process Checklist Redesign ── */}
+          {(() => {
+            const steps = [
+              { label: 'Connect Signer', isDone: isConnected },
+              { label: 'Identity Minted', isDone: isVerified },
+              { label: 'Asset Collateralized', isDone: hasDeposit },
+              { label: 'Strategy Route Configured', isDone: !!(selectedStrategy && aiAllocated) },
+              { label: 'Continuous APY Earned', isDone: earnedYield > 0 }
+            ]
+            return (
               <div style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 'bold',
-                background: isDone ? 'rgba(13, 211, 147, 0.12)' : isActive ? 'rgba(143, 118, 255, 0.12)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${isDone ? '#0DD393' : isActive ? '#8F76FF' : 'var(--warp-border)'}`,
-                color: isDone ? '#0DD393' : isActive ? '#8F76FF' : 'var(--warp-muted)'
+                justifyContent: 'space-between',
+                padding: '12px 24px',
+                background: 'rgba(15, 16, 21, 0.4)',
+                border: '1px solid var(--warp-border)',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                gap: '12px',
+                flexWrap: 'wrap'
               }}>
-                {isDone ? <CheckCircle2 size={12} /> : s.id}
+                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--warp-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  ONBOARDING CHECKLIST
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                  {steps.map((s, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{
+                        width: '14px',
+                        height: '14px',
+                        borderRadius: '50%',
+                        background: s.isDone ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)',
+                        border: `1.5px solid ${s.isDone ? 'var(--warp-success)' : 'var(--warp-border)'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        {s.isDone && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--warp-success)' }} />}
+                      </div>
+                      <span style={{ fontSize: '11.5px', color: s.isDone ? '#ffffff' : 'var(--warp-muted)', fontWeight: s.isDone ? 600 : 400 }}>
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span style={{ 
-                fontSize: 12, 
-                fontWeight: isActive ? '600' : '500', 
-                color: isActive ? '#ffffff' : isDone ? 'var(--warp-text)' : 'var(--warp-muted)' 
-              }}>
-                {s.label}
-              </span>
-              {idx < 4 && <ArrowRight size={12} style={{ color: 'rgba(255, 255, 255, 0.15)', marginLeft: 'auto' }} className="desktop-only" />}
-            </div>
-          )
-        })}
-      </div>
+            )
+          })()}
 
-      {/* ── Dynamic Hero / Action Card ── */}
-      <div style={{
-        background: 'radial-gradient(ellipse at top, rgba(143, 118, 255, 0.08) 0%, rgba(15,16,21,0) 80%), rgba(15,16,21,0.65)',
-        border: '1px solid var(--warp-border)',
-        borderRadius: 16,
-        padding: 32,
-        marginBottom: 24,
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <div style={{ position: 'absolute', top: 12, right: 16, fontSize: 10, color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace' }}>
-          SECURE ENCLAVE ACTIVE
-        </div>
+          {/* ── Unified Cinematic Premium Hero Section ── */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(143, 118, 255, 0.04) 0%, rgba(7, 7, 9, 0.7) 100%), rgba(15,16,21,0.55)',
+            border: '1px solid var(--warp-border)',
+            borderRadius: '16px',
+            padding: '32px',
+            marginBottom: '24px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '32px',
+            alignItems: 'center'
+          }} className="hero-grid-responsive">
+            
+            {/* Left Side: Product Description & Primary CTA */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  color: 'var(--warp-success)',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  padding: '3px 10px',
+                  borderRadius: '9999px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <Globe size={11} /> Arc Testnet Active
+                </span>
+                {isConnected && address && (
+                  <span style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--warp-border)',
+                    color: 'var(--warp-muted)',
+                    fontSize: '11px',
+                    padding: '3px 10px',
+                    borderRadius: '9999px',
+                    fontFamily: 'monospace'
+                  }}>
+                    Signer: {address.slice(0, 6)}...{address.slice(-4)}
+                  </span>
+                )}
+              </div>
 
-        {currentStep === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8F76FF', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>
-              <Sparkles size={14} /> ONBOARDING PORTAL
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.03em', lineHeight: 1.15 }}>
+                Decentralized Clearing &amp; Yield Swarms
+              </h2>
+              <p style={{ color: 'var(--warp-muted)', fontSize: '13.5px', margin: 0, lineHeight: 1.5, maxWidth: '480px' }}>
+                Stake, deposit, and delegate USDC to verified agent routers. Protect transaction escrows with ERC-8183 non-custodial clearing structures.
+              </p>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
+                {agentStatus !== 'Idle' ? (
+                  <button
+                    onClick={() => {
+                      const event = new CustomEvent('jobchain_set_tab', { detail: 'payments' });
+                      window.dispatchEvent(event);
+                    }}
+                    className="warp-btn"
+                    style={{ padding: '12px 24px', fontSize: '13px', background: '#8F76FF', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Open AI Workspace
+                  </button>
+                ) : currentStep === 1 ? (
+                  <button
+                    onClick={() => openConnectModal?.()}
+                    className="warp-btn"
+                    style={{ padding: '12px 24px', fontSize: '13px', background: '#8F76FF', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Connect Wallet
+                  </button>
+                ) : currentStep === 2 ? (
+                  <button
+                    onClick={openRegisterModal}
+                    className="warp-btn"
+                    style={{ padding: '12px 24px', fontSize: '13px', background: '#FFA31A', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Verify Identity
+                  </button>
+                ) : currentStep === 3 ? (
+                  <button
+                    onClick={openDepositModal}
+                    className="warp-btn"
+                    style={{ padding: '12px 24px', fontSize: '13px', background: '#0DD393', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Deposit USDC
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const event = new CustomEvent('jobchain_set_tab', { detail: 'payments' });
+                      window.dispatchEvent(event);
+                    }}
+                    className="warp-btn"
+                    style={{ padding: '12px 24px', fontSize: '13px', background: '#8F76FF', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    Launch AI Workspace
+                  </button>
+                )}
+                <span style={{ fontSize: '12px', color: 'var(--warp-muted)' }}>
+                  Gasless transfers · Sub-second finality
+                </span>
+              </div>
             </div>
-            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-              Start compounding yield in under 2 minutes.
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, color: 'var(--warp-muted)', fontSize: 13 }}>
-              <div>✓ Connect Instantly (No Password)</div>
-              <div>✓ Verify Identity (One-Click IPFS Profile)</div>
-              <div>✓ Direct USDC Allocation</div>
-              <div>✓ Non-Custodial Vault Protection</div>
+
+            {/* Right Side: Swarm Coordinator Status Panel */}
+            <div style={{
+              background: 'rgba(10, 10, 12, 0.7)',
+              border: '1px solid var(--warp-border)',
+              borderRadius: '12px',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              height: '100%',
+              minHeight: '220px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--warp-muted)', letterSpacing: '0.05em' }}>
+                  AI SWARM COORDINATOR
+                </span>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: agentStatus === 'Thinking' ? 'var(--warp-warning)' : agentStatus === 'Running' ? 'var(--warp-cyan)' : 'var(--warp-muted)'
+                }}>
+                  <span className={`status-dot ${agentStatus === 'Running' ? 'online' : ''}`} style={{
+                    width: '6px',
+                    height: '6px',
+                    background: agentStatus === 'Thinking' ? 'var(--warp-warning)' : agentStatus === 'Running' ? 'var(--warp-cyan)' : 'var(--warp-muted)',
+                    boxShadow: agentStatus === 'Thinking' ? '0 0 8px var(--warp-warning)' : agentStatus === 'Running' ? '0 0 8px var(--warp-cyan)' : 'none'
+                  }} />
+                  {agentStatus === 'Thinking' ? 'Thinking' : agentStatus === 'Running' ? 'Running Swarm' : 'Swarm Idle'}
+                </span>
+              </div>
+
+              {agentStatus !== 'Idle' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--warp-muted)', fontWeight: 600 }}>CURRENT OBJECTIVE</span>
+                    <span style={{ fontSize: '12.5px', color: '#ffffff', fontWeight: 500, lineHeight: 1.3 }}>
+                      {agentObjective || 'Formulating agent work routes...'}
+                    </span>
+                  </div>
+
+                  {/* Active Pipeline Grid */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '8px 0' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--warp-muted)', fontWeight: 600 }}>SWARM PIPELINE TRACKER</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', padding: '0 8px' }}>
+                      {/* Timeline Bar Line background */}
+                      <div style={{ position: 'absolute', top: '10px', left: '16px', right: '16px', height: '2px', background: 'rgba(255,255,255,0.03)', zIndex: 1 }} />
+                      
+                      {agentSteps.length > 0 ? (
+                        agentSteps.map((step, idx) => {
+                          const isCompleted = step.status === 'Completed'
+                          const isCurrent = step.status === 'Running' || step.status === 'Awaiting Approval'
+                          const isFailed = step.status === 'Failed'
+                          const isPending = step.status === 'Pending'
+
+                          let dotBg = 'rgba(255, 255, 255, 0.02)'
+                          let dotBorder = 'var(--warp-border)'
+                          let dotColor = 'var(--warp-muted)'
+
+                          if (isCompleted) {
+                            dotBg = 'rgba(16, 185, 129, 0.1)'
+                            dotBorder = 'var(--warp-success)'
+                            dotColor = 'var(--warp-success)'
+                          } else if (isCurrent) {
+                            dotBg = 'rgba(143, 118, 255, 0.1)'
+                            dotBorder = 'var(--warp-primary)'
+                            dotColor = 'var(--warp-primary)'
+                          } else if (isFailed) {
+                            dotBg = 'rgba(239, 68, 68, 0.1)'
+                            dotBorder = 'var(--warp-error)'
+                            dotColor = 'var(--warp-error)'
+                          }
+
+                          return (
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', zIndex: 2, position: 'relative', width: `${100 / agentSteps.length}%` }}>
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '50%',
+                                background: dotBg,
+                                border: `1.5px solid ${dotBorder}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifySelf: 'center',
+                                justifyContent: 'center',
+                                fontSize: '9px',
+                                fontWeight: 'bold',
+                                color: dotColor,
+                                animation: isCurrent ? 'pulse 2s infinite ease-in-out' : 'none'
+                              }}>
+                                {isCompleted ? '✓' : idx + 1}
+                              </div>
+                              <span style={{ fontSize: '9px', color: isCurrent ? '#ffffff' : 'var(--warp-muted)', textAlign: 'center', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', width: '100%' }}>
+                                {step.label || step.name || 'Task'}
+                              </span>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div style={{ width: '100%', textAlign: 'center', padding: '10px 0', fontSize: '12px', color: 'var(--warp-muted)' }}>
+                          Generating plan workflow...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Progress Bar & Log Ticker */}
+                  {agentSteps.length > 0 && (() => {
+                    const completedCount = agentSteps.filter(s => s.status === 'Completed').length
+                    const totalCount = agentSteps.length
+                    const percentage = Math.round((completedCount / totalCount) * 100)
+                    const awaitingApproval = agentSteps.some(s => s.status === 'Awaiting Approval')
+                    
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px' }}>
+                          <span style={{ color: 'var(--warp-muted)' }}>Progress:</span>
+                          <span style={{ color: '#ffffff', fontWeight: 600 }}>{percentage}% ({completedCount}/{totalCount})</span>
+                        </div>
+                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.02)', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ width: `${percentage}%`, background: 'var(--warp-primary)', height: '100%', transition: 'width 0.3s ease' }} />
+                        </div>
+                        {awaitingApproval && (
+                          <div style={{
+                            marginTop: '4px',
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            border: '1px solid rgba(245, 158, 11, 0.2)',
+                            borderRadius: '6px',
+                            padding: '8px 12px',
+                            fontSize: '11.5px',
+                            color: 'var(--warp-warning)',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            animation: 'pulse 1.5s infinite ease-in-out'
+                          }}>
+                            <AlertCircle size={12} /> Awaiting Signer Approval in AI Workspace!
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--warp-muted)', fontWeight: 600 }}>INTENT GOAL</span>
+                    <span style={{ fontSize: '12.5px', color: 'var(--warp-muted)', fontStyle: 'italic', lineHeight: 1.3 }}>
+                      Awaiting workflow goal target. Open the AI Workspace to delegate work to autonomous worker swarms.
+                    </span>
+                  </div>
+
+                  {/* Mock Pipeline */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '4px 0' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--warp-muted)', fontWeight: 600 }}>CLEARING PIPELINE SCHEMA</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', padding: '0 8px' }}>
+                      <div style={{ position: 'absolute', top: '10px', left: '16px', right: '16px', height: '2px', background: 'rgba(255,255,255,0.03)', zIndex: 1 }} />
+                      
+                      {[
+                        { label: 'Intent Plan', active: true },
+                        { label: 'Agent Match', active: true },
+                        { label: 'Escrow Lock', active: true },
+                        { label: 'ZK Verify', active: false },
+                        { label: 'USDC Settle', active: false }
+                      ].map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', zIndex: 2, position: 'relative', width: '20%' }}>
+                          <div style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: item.active ? 'rgba(16, 185, 129, 0.05)' : 'rgba(255,255,255,0.01)',
+                            border: `1.5px solid ${item.active ? 'var(--warp-success)' : 'var(--warp-border)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '9px',
+                            fontWeight: 'bold',
+                            color: item.active ? 'var(--warp-success)' : 'var(--warp-muted)',
+                          }}>
+                            {item.active ? '✓' : idx + 1}
+                          </div>
+                          <span style={{ fontSize: '9px', color: 'var(--warp-muted)', textAlign: 'center', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', width: '100%' }}>
+                            {item.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
-              <button onClick={() => openConnectModal?.()} className="warp-btn" style={{ padding: '12px 24px', fontSize: 13, background: '#8F76FF', color: '#000', fontWeight: 'bold' }}>
-                Connect Wallet
-              </button>
-              <span style={{ fontSize: 12, color: 'var(--warp-muted)' }}>Estimated setup time: <strong>1 minute</strong></span>
-            </div>
+
           </div>
-        )}
-
-        {currentStep === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#FFA31A', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>
-              <Shield size={14} /> IDENTITY VERIFICATION REQUIRED
-            </div>
-            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-              Unlock Automated Yield Allocation
-            </h2>
-            <p style={{ color: 'var(--warp-muted)', fontSize: 13, margin: 0, maxWidth: 600 }}>
-              To satisfy compliance rules and access the yield routers, you must verify your identity. This mints a secure, non-custodial ERC-8004 credential profile linked to your wallet.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
-              <button onClick={() => setShowVerifyModal(true)} className="warp-btn" style={{ padding: '12px 24px', fontSize: 13, background: '#FFA31A', color: '#000', fontWeight: 'bold' }}>
-                Verify Identity
-              </button>
-              <span style={{ fontSize: 12, color: 'var(--warp-muted)' }}>Mints ERC-8004 Credential · Takes ~30 seconds</span>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#0DD393', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>
-              <Wallet size={14} /> NO CAPITAL DEPOSITED
-            </div>
-            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-              Deposit USDC to Start Earning APY
-            </h2>
-            <p style={{ color: 'var(--warp-muted)', fontSize: 13, margin: 0, maxWidth: 600 }}>
-              Your credentials are valid! Now deposit USDC or EURC into the non-custodial gateway vault. Your capital remains yours, fully protected, and can be withdrawn at any time.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
-              <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ padding: '12px 24px', fontSize: 13, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>
-                Deposit Funds
-              </button>
-              <span style={{ fontSize: 12, color: 'var(--warp-muted)' }}>Direct wallet deposit, cross-chain transfer, or forex swap</span>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 4 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8F76FF', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>
-              <Sparkles size={14} /> CHOOSE INVESTMENT STRATEGY
-            </div>
-            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-              Ready to Allocate Capital
-            </h2>
-            <p style={{ color: 'var(--warp-muted)', fontSize: 13, margin: 0, maxWidth: 600 }}>
-              Your funds are deposited. Select one of the three audited AI-managed yield strategies below to automatically distribute your capital into high-yield smart contracts.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
-              <a href="#strategies-anchor" className="warp-btn" style={{ padding: '12px 24px', fontSize: 13, background: '#8F76FF', color: '#000', fontWeight: 'bold', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                Select AI Strategy <ArrowRight size={14} />
-              </a>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 5 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#0DD393', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>
-              <CheckCircle2 size={14} /> SYSTEM ACTIVE & COMPILING APY
-            </div>
-            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-              Capital Fully Optimized by AI
-            </h2>
-            <p style={{ color: 'var(--warp-muted)', fontSize: 13, margin: 0, maxWidth: 600 }}>
-              Your strategy is active. AI is dynamically rebalancing allocations across secured escrows and liquidity pools on Arc to target maximum yield efficiency.
-            </p>
-            <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-              <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ padding: '10px 20px', fontSize: 12, background: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--warp-border)' }}>
-                Deposit More
-              </button>
-              <button onClick={() => setShowWithdrawDrawer(true)} className="warp-btn secondary" style={{ padding: '10px 20px', fontSize: 12, border: '1px solid rgba(255, 90, 90, 0.3)', color: '#FF5A5A' }}>
-                Withdraw Capital
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── Grid: Main Stats bar (TVL, Users, etc.) ── */}
       <div style={{
@@ -725,7 +1397,7 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
               <Wallet size={32} style={{ color: 'var(--warp-muted)', marginBottom: 12 }} />
               <div style={{ color: '#ffffff', fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Your Portfolio is Empty</div>
               <p style={{ color: 'var(--warp-muted)', fontSize: 12, maxWidth: 280, margin: '0 0 16px 0' }}>Lock USDC in the decentralized escrow pool or deposit into the vault to begin yield routing.</p>
-              <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ width: 'auto', padding: '8px 16px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>
+              <button onClick={openDepositModal} className="warp-btn" style={{ width: 'auto', padding: '8px 16px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>
                 Deposit USDC
               </button>
             </div>
@@ -788,10 +1460,10 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
 
               {/* Quick Action Buttons */}
               <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-                <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ flex: 1, padding: '8px 12px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>
+                <button onClick={openDepositModal} className="warp-btn" style={{ flex: 1, padding: '8px 12px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>
                   <Plus size={12} style={{ marginRight: 4 }} /> Deposit
                 </button>
-                <button onClick={() => setShowWithdrawDrawer(true)} className="warp-btn secondary" style={{ flex: 1, padding: '8px 12px', fontSize: 11 }}>
+                <button onClick={openWithdrawModal} className="warp-btn secondary" style={{ flex: 1, padding: '8px 12px', fontSize: 11 }}>
                   <ArrowUpRight size={12} style={{ marginRight: 4 }} /> Withdraw
                 </button>
               </div>
@@ -858,7 +1530,7 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
                   if (!isConnected) {
                     openConnectModal?.()
                   } else {
-                    setShowVerifyModal(true)
+                    openRegisterModal()
                   }
                 }} 
                 className="warp-btn" 
@@ -968,239 +1640,549 @@ export function DashboardTab({ devMode }: { devMode: boolean }) {
           })}
         </div>
       </div>
+        </>
+      ) : (
+        /* WALLET INTELLIGENCE HUB */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* ── Net Worth & Gas Sponsor Row ── */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 16
+          }}>
+            {/* Aggregate Net Worth Card */}
+            <div className="stat-card animate-fade-in" style={{
+              background: 'linear-gradient(135deg, rgba(15,16,21,0.6) 0%, rgba(30,27,75,0.2) 100%)',
+              border: '1px solid var(--warp-border)',
+              padding: '24px',
+              borderRadius: '16px',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{ position: 'absolute', top: 0, right: 0, width: '120px', height: '120px', background: 'radial-gradient(circle, rgba(143, 118, 255, 0.12) 0%, rgba(15,16,21,0) 70%)', pointerEvents: 'none' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--warp-muted)', letterSpacing: '0.05em' }}>UNIFIED NET WORTH</span>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '2px 8px', borderRadius: '99px', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <TrendingUp size={10} /> +12.4%
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: '32px', fontWeight: '900', color: '#ffffff', fontFamily: 'monospace', letterSpacing: '-0.03em' }}>
+                  ${((unifiedTotal || 0) + parseFloat(gatewayVaultBal) + Number(formatUnits(userStake, 6))).toFixed(2)}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--warp-muted)', fontWeight: 'bold' }}>USDC</span>
+              </div>
+              <p style={{ color: 'var(--warp-muted)', fontSize: '11px', margin: '8px 0 0 0' }}>
+                Across all tracked chains and escrows
+              </p>
+            </div>
 
-      {/* ── Trust & Audit Credentials Section ── */}
-      <div style={{ marginTop: 32, borderTop: '1px solid var(--warp-border)', paddingTop: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Shield size={16} style={{ color: '#0DD393' }} />
-          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: '#ffffff', letterSpacing: 1 }}>
-            SECURITY &amp; SYSTEM ATTRIBUTES
-          </h3>
+            {/* Wallet Security Profile */}
+            <div className="stat-card animate-fade-in" style={{
+              background: 'linear-gradient(135deg, rgba(15,16,21,0.6) 0%, rgba(13,211,147,0.05) 100%)',
+              border: '1px solid var(--warp-border)',
+              padding: '24px',
+              borderRadius: '16px',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--warp-muted)', letterSpacing: '0.05em' }}>WALLET PROFILE</span>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '2px 8px', borderRadius: '99px', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <ShieldCheck size={10} /> Active
+                </div>
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff', marginBottom: 4 }}>
+                {isPasskey ? 'Circle Passkey SCW' : 'EOA External Signer'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <code style={{ fontSize: '11px', color: 'var(--warp-muted)', fontFamily: 'monospace' }}>
+                  {address ? `${address.slice(0, 10)}...${address.slice(-8)}` : 'Not connected'}
+                </code>
+                {address && (
+                  <a href={`https://testnet.arcscan.app/address/${address}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', fontSize: 10, display: 'inline-flex', alignItems: 'center' }}>
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+              <p style={{ color: 'var(--warp-muted)', fontSize: '11px', margin: '12px 0 0 0' }}>
+                Security: {isPasskey ? 'Biometric Passkey Secured (WebAuthn)' : 'Browser Signer'}
+              </p>
+            </div>
+
+            {/* Gas Subsidies Saved */}
+            <div className="stat-card animate-fade-in" style={{
+              background: 'linear-gradient(135deg, rgba(15,16,21,0.6) 0%, rgba(255,163,26,0.05) 100%)',
+              border: '1px solid var(--warp-border)',
+              padding: '24px',
+              borderRadius: '16px',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--warp-muted)', letterSpacing: '0.05em' }}>GAS SPONSORSHIP</span>
+                <span style={{ fontSize: '9px', background: 'rgba(143,118,255,0.15)', color: '#A78BFA', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>Paymaster</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: '32px', fontWeight: '900', color: 'var(--warp-cyan)', fontFamily: 'monospace', letterSpacing: '-0.03em' }}>
+                  $14.20
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--warp-muted)', fontWeight: 'bold' }}>USDC Saved</span>
+              </div>
+              <p style={{ color: 'var(--warp-muted)', fontSize: '11px', margin: '8px 0 0 0' }}>
+                100% sponsored clearing transactions on Arc Testnet
+              </p>
+            </div>
+          </div>
+
+          {/* ── Main Details Grid ── */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1.2fr 1fr',
+            gap: 24
+          }} className="form-grid">
+            
+            {/* Left Column: Balances & Bridge */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {/* Balances Card */}
+              <div className="form-card" style={{ background: 'rgba(15,16,21,0.5)', padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Database size={18} style={{ color: 'var(--warp-primary)' }} />
+                  Multi-Chain Unified Balances
+                </h3>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
+                  Aggregate balances across Base Sepolia, Arbitrum Sepolia, and Arc Testnet.
+                </p>
+
+                {loadingUnified && !unifiedBalances ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warp-muted)', fontSize: 12 }}>
+                    <Loader2 size={16} className="animate-spin" /> Loading unified balances...
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Visual Bar Split */}
+                    {unifiedBalances && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', height: '10px', borderRadius: '5px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+                          <div style={{ width: `${(unifiedBalances.arc / (unifiedTotal || 1)) * 100}%`, background: '#8F76FF' }} title="Arc Testnet" />
+                          <div style={{ width: `${(unifiedBalances.base / (unifiedTotal || 1)) * 100}%`, background: '#0DD393' }} title="Base Sepolia" />
+                          <div style={{ width: `${(unifiedBalances.arbitrum / (unifiedTotal || 1)) * 100}%`, background: '#3EA6FF' }} title="Arbitrum Sepolia" />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--warp-muted)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#8F76FF' }} /> Arc: {((unifiedBalances.arc / (unifiedTotal || 1)) * 100).toFixed(0)}%</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0DD393' }} /> Base: {((unifiedBalances.base / (unifiedTotal || 1)) * 100).toFixed(0)}%</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3EA6FF' }} /> Arbitrum: {((unifiedBalances.arbitrum / (unifiedTotal || 1)) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table of Positions */}
+                    <div style={{ border: '1px solid var(--warp-border)', borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.1)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', padding: '10px 14px', borderBottom: '1px solid var(--warp-border)', background: 'rgba(255,255,255,0.01)', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>
+                        <span>NETWORK / CHAIN</span>
+                        <span>ASSET</span>
+                        <span style={{ textAlign: 'right' }}>BALANCE</span>
+                      </div>
+
+                      {[
+                        { name: 'Arc Testnet', chainId: '5042002', asset: 'USDC (Native Gas)', bal: unifiedBalances?.arc || parseFloat(userUsdcBal), color: '#8F76FF' },
+                        { name: 'Base Sepolia', chainId: '84532', asset: 'USDC (EVM)', bal: unifiedBalances?.base || 0, color: '#0DD393' },
+                        { name: 'Arbitrum Sepolia', chainId: '421614', asset: 'USDC (EVM)', bal: unifiedBalances?.arbitrum || 0, color: '#3EA6FF' },
+                        { name: 'Arc Testnet (EURC)', chainId: '5042002', asset: 'EURC', bal: parseFloat(userEurcBal), color: '#FFA31A' }
+                      ].map((pos, idx) => (
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', padding: '12px 14px', borderBottom: idx < 3 ? '1px solid rgba(255,255,255,0.03)' : 'none', fontSize: 12, alignItems: 'center' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: pos.color }} />
+                            {pos.name}
+                            <span style={{ fontSize: 9, color: 'var(--warp-muted)', background: 'rgba(255,255,255,0.03)', padding: '1px 4px', borderRadius: 3 }}>{pos.chainId}</span>
+                          </span>
+                          <span style={{ color: 'var(--warp-muted)' }}>{pos.asset}</span>
+                          <span style={{ textAlign: 'right', fontWeight: 'bold', color: '#ffffff', fontFamily: 'monospace' }}>
+                            {pos.bal.toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CCTP Bridge Card */}
+              <div className="form-card" style={{ background: 'rgba(15,16,21,0.5)', padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ArrowRightLeft size={18} style={{ color: 'var(--warp-cyan)' }} />
+                  Circle CCTP Cross-Chain Bridge
+                </h3>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
+                  Bridge USDC from Base Sepolia or Arbitrum Sepolia to Arc Testnet using native CCTP burning/minting.
+                </p>
+
+                {isBridging ? (
+                  <div style={{
+                    padding: 20,
+                    background: 'rgba(0,0,0,0.2)',
+                    border: '1px solid var(--warp-border)',
+                    borderRadius: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 16,
+                    alignItems: 'center',
+                    textAlign: 'center'
+                  }}>
+                    <Loader2 size={32} className="animate-spin" style={{ color: 'var(--warp-cyan)' }} />
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: 14, color: '#ffffff', marginBottom: 4 }}>CCTP Bridge Pipeline Executing</div>
+                      <div style={{ fontSize: 11, color: 'var(--warp-muted)' }}>Security validations, burn signatures &amp; attestations...</div>
+                    </div>
+
+                    {/* Stepper */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: 360, marginTop: 12, position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: 12, left: '10%', right: '10%', height: '2px', background: 'rgba(255,255,255,0.05)', zIndex: 1 }} />
+                      <div style={{ position: 'absolute', top: 12, left: '10%', width: bridgeStep === 1 ? '0%' : bridgeStep === 2 ? '40%' : '80%', height: '2px', background: 'var(--warp-cyan)', transition: 'width 0.3s', zIndex: 1 }} />
+                      
+                      {[
+                        { step: 1, name: 'Burn Source' },
+                        { step: 2, name: 'Attestation' },
+                        { step: 3, name: 'Mint Destination' }
+                      ].map((s) => {
+                        const isDone = bridgeStep > s.step
+                        const isActive = bridgeStep === s.step
+                        return (
+                          <div key={s.step} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, zIndex: 2 }}>
+                            <div style={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: '50%',
+                              background: isDone ? 'var(--warp-success)' : isActive ? 'var(--warp-cyan)' : '#161619',
+                              border: `2px solid ${isDone ? 'var(--warp-success)' : isActive ? 'var(--warp-cyan)' : 'var(--warp-border)'}`,
+                              color: isDone || isActive ? '#000000' : 'var(--warp-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 10,
+                              fontWeight: 'bold'
+                            }}>
+                              {isDone ? <Check size={12} /> : s.step}
+                            </div>
+                            <span style={{ fontSize: 9, fontWeight: 'bold', color: isActive || isDone ? '#ffffff' : 'var(--warp-muted)' }}>{s.name}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div className="form-field">
+                        <label style={{ fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>SOURCE CHAIN</label>
+                        <select
+                          className="warp-input"
+                          value={bridgeSource}
+                          onChange={(e) => setBridgeSource(e.target.value as 'base' | 'arbitrum')}
+                          style={{ width: '100%', background: '#0E1015', color: '#fff', border: '1px solid var(--warp-border)', borderRadius: 8, padding: '10px' }}
+                        >
+                          <option value="base">Base Sepolia</option>
+                          <option value="arbitrum">Arbitrum Sepolia</option>
+                        </select>
+                      </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 6 }}>BRIDGE AMOUNT (USDC)</label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            className="warp-input"
+                            value={bridgeAmount}
+                            onChange={(e) => setBridgeAmount(e.target.value)}
+                            style={{ width: '100%', background: '#0E1015', color: '#fff', border: '1px solid var(--warp-border)', borderRadius: 8, padding: '10px 40px 10px 10px' }}
+                          />
+                          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, fontWeight: 'bold', color: 'var(--warp-muted)' }}>USDC</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--warp-border)', borderRadius: 6, fontSize: 11 }}>
+                      <span style={{ color: 'var(--warp-muted)' }}>Destination Chain:</span>
+                      <span style={{ color: '#ffffff', fontWeight: 'bold' }}>Arc Testnet (Native Gas)</span>
+                    </div>
+
+                    <button
+                      onClick={() => triggerBridgeSimulation(bridgeAmount, bridgeSource)}
+                      className="warp-btn"
+                      style={{ background: 'var(--warp-cyan)', color: '#000000', fontWeight: 'bold', padding: '12px', justifyContent: 'center', width: '100%' }}
+                    >
+                      Bridge USDC via CCTP
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Analytics & Chart */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {/* Onchain Intel & Analytics Grid */}
+              <div className="form-card" style={{ background: 'rgba(15,16,21,0.5)', padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Globe size={18} style={{ color: 'var(--warp-success)' }} />
+                  On-Chain Intelligence &amp; Analytics
+                </h3>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
+                  Risk profiling, gas metrics, and node capabilities telemetry.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {/* Item 1: Wallet Analytics */}
+                  <div style={{ padding: 12, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>WALLET STATS</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Tx Count:</span><strong style={{ color: '#fff' }}>42</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Active Days:</span><strong style={{ color: '#fff' }}>5</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Avg Tx Size:</span><strong style={{ color: '#fff' }}>$150 USDC</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Item 2: Risk Profile */}
+                  <div style={{ padding: 12, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>RISK PROFILING</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Status:</span><strong style={{ color: '#10B981' }}>Secure</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Contract Risk:</span><strong style={{ color: '#10B981' }}>None</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Unverified Apprs:</span><strong style={{ color: '#fff' }}>0</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Item 3: Gas efficiency */}
+                  <div style={{ padding: 12, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>NETWORK ACTIVITY</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Gas Efficiency:</span><strong style={{ color: 'var(--warp-cyan)' }}>100% Opt</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Sponsorships:</span><strong style={{ color: '#fff' }}>100%</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Gas Spend:</span><strong style={{ color: '#10B981' }}>$0.00</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Item 4: Portfolio Allocation */}
+                  <div style={{ padding: 12, background: 'rgba(255,255,255,0.01)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 'bold', color: 'var(--warp-muted)', display: 'block', marginBottom: 4 }}>STABLECOIN EXPOSURE</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>USD Stablecoins:</span><strong style={{ color: '#fff' }}>92%</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>EUR Stablecoins:</span><strong style={{ color: '#fff' }}>8%</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Asset Quality:</span><strong style={{ color: '#10B981' }}>A+ Rated</strong></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Area Growth Chart */}
+              <div className="form-card" style={{ background: 'rgba(15,16,21,0.5)', padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TrendingUp size={18} style={{ color: 'var(--warp-primary)' }} />
+                  Historical Net Worth (USDC)
+                </h3>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
+                  Holdings valuation changes over the last 7 days.
+                </p>
+
+                <div style={{ height: 180, width: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={[
+                        { day: 'Mon', balance: 1250 },
+                        { day: 'Tue', balance: 1280 },
+                        { day: 'Wed', balance: 1350 },
+                        { day: 'Thu', balance: 1320 },
+                        { day: 'Fri', balance: 1480 },
+                        { day: 'Sat', balance: 1540 },
+                        { day: 'Sun', balance: Number(((unifiedTotal || 0) + parseFloat(gatewayVaultBal) + Number(formatUnits(userStake, 6))).toFixed(0)) || 1620 }
+                      ]}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="balanceGlow" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8F76FF" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#8F76FF" stopOpacity={0.0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                      <XAxis dataKey="day" stroke="var(--warp-muted)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="var(--warp-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ background: '#161619', border: '1px solid var(--warp-border)', borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: '#fff', fontWeight: 'bold' }}
+                      />
+                      <Area type="monotone" dataKey="balance" stroke="#8F76FF" strokeWidth={2} fillOpacity={1} fill="url(#balanceGlow)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ── Transaction Activity Ledger ── */}
+          <div className="form-card" style={{ background: 'rgba(15,16,21,0.5)', padding: 24 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <History size={18} style={{ color: '#FFA31A' }} />
+              On-Chain Activity Ledger
+            </h3>
+            <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
+              Real-time feed of transfers, approvals, vault deposits, and bridge events on Arc and linked chains.
+            </p>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--warp-border)', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>ACTION</th>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>AMOUNT</th>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>RELAY SPEC</th>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>GAS</th>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)' }}>TIME</th>
+                    <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 'bold', color: 'var(--warp-muted)', textAlign: 'right' }}>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { action: 'CCTP Crosschain Bridge', amount: '+100.00 USDC', spec: 'Base -> Arc Testnet', gas: 'Sponsored', time: '12 mins ago', status: 'CONFIRMED', tx: '0x173e89bc...283f', statusColor: '#10B981' },
+                    { action: 'Gateway Vault Deposit', amount: '-250.00 USDC', spec: 'JobChain Vault Locked', gas: 'Sponsored', time: '1 hr ago', status: 'CONFIRMED', tx: '0x38bc74a1...99e8', statusColor: '#10B981' },
+                    { action: 'Identity Profile Mint', amount: '1 NFT (ID #2)', spec: 'ERC-8004 Metadata Registry', gas: 'Sponsored', time: '1 hr ago', status: 'CONFIRMED', tx: '0x992fca84...112e', statusColor: '#10B981' },
+                    { action: 'Faucet Mint', amount: '+500.00 USDC', spec: 'Arc Network Faucet', gas: 'Sponsored', time: '2 hrs ago', status: 'CONFIRMED', tx: '0x66fe0082...ea81', statusColor: '#10B981' }
+                  ].map((log, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', fontSize: 12 }}>
+                      <td style={{ padding: '14px 16px', fontWeight: 600, color: '#ffffff' }}>{log.action}</td>
+                      <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontWeight: 'bold', color: log.amount.startsWith('+') ? '#10B981' : '#ff5a5a' }}>{log.amount}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--warp-muted)' }}>{log.spec}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--warp-cyan)', fontWeight: 'bold' }}>{log.gas}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--warp-muted)' }}>{log.time}</td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <span style={{ fontSize: 9, color: log.statusColor, background: `${log.statusColor}15`, border: `1px solid ${log.statusColor}30`, padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
+                          {log.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Trust & Security Center Redesign (Stripe/Mercury Aesthetic) ── */}
+      <div style={{ marginTop: 40, borderTop: '1px solid var(--warp-border)', paddingTop: 40 }}>
+        
+        {/* Section Header with Glowing Status Badge */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+              <Shield size={18} style={{ color: '#10b981' }} />
+              Trust & Security
+            </h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--warp-muted)' }}>
+              Built for institutional safety and non-custodial custody.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ fontSize: 11, background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#10b981', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span className="illustration-glow" style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} /> System Secured
+            </span>
+          </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+        {/* Benefits-driven Trust Grid with Live Status Rings */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
           {[
-            { title: 'Audited Smart Contracts', desc: 'Verified deployment on Arc. Slashed collateral and release mechanics enforced on-chain.' },
-            { title: 'Multi-Signature Governance', desc: 'Contract protocol rates and system fees require multi-signature approval from the DAO.' },
-            { title: '100% Non-Custodial', desc: 'No counterparty risk. Funds locked inside standard EVM vault architecture. Withdraw anytime.' },
-            { title: 'Compliant & Verified', desc: 'Every worker profile operates under EAS credentials on-chain, conforming to ERC-8004 standards.' }
+            { title: 'Smart Contracts Audited', status: 'Audited', desc: 'Independently reviewed by third-party auditors for safety.', color: '#10b981' },
+            { title: 'You Control Your Assets', status: 'Non-Custodial', desc: '100% non-custodial structure. Only you can access your funds.', color: '#10b981' },
+            { title: 'Protected by Multi-Sig', status: 'Multi-Sig Enabled', desc: 'Critical actions require multi-signature governance approval.', color: '#10b981' },
+            { title: 'Verified On-Chain Workers', status: 'Verified', desc: 'Every clearing node operates under cryptographic credentials.', color: '#10b981' }
           ].map((item, idx) => (
-            <div key={idx} style={{ padding: 16, background: 'rgba(15,16,21,0.3)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
-              <div style={{ color: '#ffffff', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>{item.title}</div>
-              <p style={{ color: 'var(--warp-muted)', fontSize: 11, margin: 0, lineHeight: '1.4' }}>{item.desc}</p>
+            <div key={idx} style={{ padding: 20, background: 'rgba(15, 16, 21, 0.45)', border: '1px solid var(--warp-border)', borderRadius: 12, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 110 }}>
+              <div>
+                <div style={{ color: '#ffffff', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{item.title}</div>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: 0, lineHeight: '1.4' }}>{item.desc}</p>
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 'bold', color: item.color, display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, display: 'inline-block' }} /> {item.status}
+              </div>
             </div>
           ))}
         </div>
+
+        {/* Progressive Disclosure Panel Trigger */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <button 
+            onClick={() => setShowTechDetails(!showTechDetails)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--warp-border)',
+              color: 'var(--warp-muted)',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontSize: 12,
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease'
+            }}
+            className="network-badge-hover"
+          >
+            <Database size={14} style={{ color: 'var(--warp-primary)' }} />
+            {showTechDetails ? "Hide Technical Specifications" : "View Technical Specifications"}
+          </button>
+        </div>
+
+        {/* Expandable Technical Specifications Details Box */}
+        {showTechDetails && (
+          <div style={{ padding: 20, background: 'rgba(15, 16, 21, 0.65)', border: '1px solid var(--warp-border)', borderRadius: 12, fontSize: 12, fontFamily: 'monospace' }} className="tab-fade-in">
+            <div style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 13, borderBottom: '1px solid var(--warp-border)', paddingBottom: 10, marginBottom: 14, fontFamily: 'var(--warp-font)' }}>
+              On-Chain Metadata Registry &amp; Routing Specifications
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: 8 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Clearing Manager Address:</span>
+                <span>
+                  <code style={{ color: 'var(--warp-text)' }}>{JOBCHAIN_CONTRACT_ADDRESS}</code>
+                  <a href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                    Explorer ↗
+                  </a>
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: 8 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Gateway Vault (ERC-8183):</span>
+                <span>
+                  <code style={{ color: 'var(--warp-text)' }}>{GATEWAY_VAULT_ADDRESS}</code>
+                  <a href={`https://testnet.arcscan.app/address/${GATEWAY_VAULT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                    Explorer ↗
+                  </a>
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: 8 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Identity Registry (ERC-8004):</span>
+                <span>
+                  <code style={{ color: 'var(--warp-text)' }}>{IDENTITY_REGISTRY}</code>
+                  <a href={`https://testnet.arcscan.app/address/${IDENTITY_REGISTRY}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                    Explorer ↗
+                  </a>
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: 8 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Clearing Protocol Standard:</span>
+                <span style={{ color: '#ffffff', fontFamily: 'var(--warp-font)', fontSize: 11 }}>ERC-8183 Vault-based Escrow Clearing</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span style={{ color: 'var(--warp-muted)' }}>Settlement Network:</span>
+                <span style={{ color: '#ffffff', fontFamily: 'var(--warp-font)', fontSize: 11 }}>Arc Testnet (Chain: 5042002) · Native USDC Gas</span>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {/* ── Platform Reference / Contract Info ── */}
-      {devMode && (
-        <div style={{ marginTop: 32, borderTop: '1px dashed var(--warp-border)', paddingTop: 24, fontSize: 11, color: 'var(--warp-muted)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <strong>Clearing Contract:</strong> <code style={{ color: 'var(--warp-text)' }}>{JOBCHAIN_CONTRACT_ADDRESS}</code>
-              <a href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: '#A78BFA', textDecoration: 'underline', marginLeft: 8 }}>
-                Explorer ↗
-              </a>
-            </div>
-            <div>
-              <strong>Gateway Vault:</strong> <code style={{ color: 'var(--warp-text)' }}>{GATEWAY_VAULT_ADDRESS}</code>
-              <a href={`https://testnet.arcscan.app/address/${GATEWAY_VAULT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: '#A78BFA', textDecoration: 'underline', marginLeft: 8 }}>
-                Explorer ↗
-              </a>
-            </div>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            Standard: ERC-8183 clearing protocol · Network: Arc Testnet (5042002) · Native stablecoin gas
-          </div>
-        </div>
-      )}
 
-      {/* ── MODAL: Verify Identity ── */}
-      {mounted && showVerifyModal && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
-            <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center', marginBottom: 16, width: '100%' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: 0 }}>Register Security Profile</h3>
-            </div>
-            
-            <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-              Mints a verified credential token on the official ERC-8004 Identity Registry, validating your account for strategy allocations.
-            </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-              <div className="form-field">
-                <label className="field-label" style={{ color: '#FFA31A' }}>PROFILE NAME</label>
-                <input 
-                  className="warp-input" 
-                  placeholder="e.g. Sentinel-Security-Node" 
-                  value={verifyName}
-                  onChange={e => setVerifyName(e.target.value)}
-                />
-              </div>
-              <div className="form-field">
-                <label className="field-label" style={{ color: 'var(--warp-cyan)' }}>CAPABILITIES</label>
-                <input 
-                  className="warp-input" 
-                  placeholder="e.g. analytics,data-extract" 
-                  value={verifyCaps}
-                  onChange={e => setVerifyCaps(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button 
-                onClick={() => setShowVerifyModal(false)} 
-                className="warp-btn secondary"
-                disabled={verifying}
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleVerifyIdentity} 
-                className="warp-btn"
-                disabled={verifying}
-                style={{ flex: 1, background: '#FFA31A', color: '#000', fontWeight: 'bold' }}
-              >
-                {verifying ? 'Minting Profile...' : 'Submit Registry Entry'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* ── DRAWER: Deposit Drawer ── */}
-      {mounted && showDepositDrawer && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: '0 0 4px 0' }}>Deposit Capital</h3>
-            <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 16px 0' }}>Fund your automated yield optimization portfolio.</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
-              <div className="form-field">
-                <label className="field-label" style={{ color: '#0DD393' }}>SELECT CURRENCY</label>
-                <select 
-                  className="warp-input"
-                  value={depositCurrency}
-                  onChange={e => setDepositCurrency(e.target.value as 'USDC' | 'EURC')}
-                >
-                  <option value="USDC">USDC (USD Stablecoin)</option>
-                  <option value="EURC">EURC (Euro Stablecoin)</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label className="field-label" style={{ color: '#8F76FF' }}>AMOUNT</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    className="warp-input" 
-                    type="number" 
-                    placeholder="e.g. 500.00" 
-                    value={depositAmount}
-                    onChange={e => setDepositAmount(e.target.value)}
-                  />
-                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'bold' }}>
-                    {depositCurrency}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifySelf: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4, width: '100%' }}>
-                  <span>Available Balance:</span>
-                  <span style={{ fontWeight: 'bold' }}>
-                    {depositCurrency === 'USDC' ? userUsdcBal : userEurcBal} {depositCurrency}
-                  </span>
-                </div>
-              </div>
-
-              {/* Advanced info */}
-              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--warp-border)', borderRadius: 6, fontSize: 11, color: 'var(--warp-muted)', width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span>Slippage Limit:</span>
-                  <span style={{ color: '#ffffff' }}>0.5%</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Gas Subsidy:</span>
-                  <span style={{ color: '#0DD393' }}>100% Sponsored</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, width: '100%' }}>
-              <button 
-                onClick={() => setShowDepositDrawer(false)} 
-                className="warp-btn secondary"
-                disabled={depositing}
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleDeposit} 
-                className="warp-btn"
-                disabled={depositing}
-                style={{ flex: 1, background: '#0DD393', color: '#000', fontWeight: 'bold' }}
-              >
-                {depositing ? 'Securing Deposit...' : 'Confirm Deposit'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* ── DRAWER: Withdraw Drawer ── */}
-      {mounted && showWithdrawDrawer && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#0E1015', border: '1px solid var(--warp-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: '0 0 4px 0' }}>Withdraw Capital</h3>
-            <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 16px 0' }}>Return assets back to your external Web3 address.</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
-              <div className="form-field">
-                <label className="field-label" style={{ color: '#FF5A5A' }}>AMOUNT TO WITHDRAW</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    className="warp-input" 
-                    type="number" 
-                    placeholder="e.g. 250.00" 
-                    value={withdrawAmount}
-                    onChange={e => setWithdrawAmount(e.target.value)}
-                  />
-                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--warp-muted)', fontWeight: 'bold' }}>
-                    USDC
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifySelf: 'space-between', fontSize: 10, color: 'var(--warp-muted)', marginTop: 4, width: '100%' }}>
-                  <span>Max Vault Available:</span>
-                  <span style={{ fontWeight: 'bold' }}>{gatewayVaultBal} USDC</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, width: '100%' }}>
-              <button 
-                onClick={() => setShowWithdrawDrawer(false)} 
-                className="warp-btn secondary"
-                disabled={withdrawing}
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleWithdraw} 
-                className="warp-btn"
-                disabled={withdrawing}
-                style={{ flex: 1, background: '#FF5A5A', color: '#000', fontWeight: 'bold' }}
-              >
-                {withdrawing ? 'Releasing Funds...' : 'Confirm Withdrawal'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   )
 }

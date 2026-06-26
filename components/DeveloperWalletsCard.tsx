@@ -9,6 +9,7 @@ import {
   JOBCHAIN_CONTRACT_ADDRESS,
   USDC_ADDRESS_ARC,
   IDENTITY_REGISTRY,
+  identityRegistryAbi,
   usdcAbi
 } from '@/lib/contracts'
 
@@ -67,19 +68,22 @@ export function DeveloperWalletsCard() {
     if (!publicClient) return
     setGlobalLoading(true)
     try {
-      // 1. Fetch all minted Agent IDs from the IdentityRegistry Transfer logs
-      const latestBlock = await publicClient.getBlockNumber()
-      const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
+      // Scan up to 250 tokens in parallel (since Arc RPC restricts getLogs to 10k block range)
+      const maxTokenId = 250
+      const tokenIds = Array.from({ length: maxTokenId }, (_, i) => BigInt(i))
+      const owners = await Promise.all(
+        tokenIds.map(id =>
+          publicClient.readContract({
+            address: IDENTITY_REGISTRY,
+            abi: identityRegistryAbi,
+            functionName: 'ownerOf',
+            args: [id],
+          }).catch(() => null)
+        )
+      )
 
-      const transferLogs = await publicClient.getLogs({
-        address: IDENTITY_REGISTRY,
-        event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-        args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
-        fromBlock,
-        toBlock: latestBlock,
-      })
-
-      const uniqueIds = Array.from(new Set(transferLogs.map(log => log.args.tokenId!)))
+      // Filter tokenIds that actually exist
+      const uniqueIds = tokenIds.filter((_, i) => owners[i] !== null)
 
       // 2. Fetch Circle wallets mappings from our database
       const dbRes = await fetch('/api/agent-wallet/list')

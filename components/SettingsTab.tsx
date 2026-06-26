@@ -28,6 +28,7 @@ export function SettingsTab({ devMode, setDevMode }: SettingsTabProps) {
   const [txHistory, setTxHistory] = useState<any[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [faucetLoading, setFaucetLoading] = useState(false)
+  const [showTechDetails, setShowTechDetails] = useState(false)
 
   const handleFaucet = async () => {
     if (!address) return
@@ -425,52 +426,89 @@ export function SettingsTab({ devMode, setDevMode }: SettingsTabProps) {
             background: 'rgba(15,16,21,0.5)',
             padding: 24,
           }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Cpu size={18} style={{ color: 'var(--warp-warning)' }} />
-              On-Chain Contract Specifications
-            </h3>
-            <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '0 0 20px 0' }}>
-              Raw contract addresses and transaction routing configuration.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 12, fontFamily: 'monospace' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 6 }}>
-                <span style={{ color: 'var(--warp-muted)' }}>Identity Registry (ERC-8004):</span>
-                <span style={{ color: '#ffffff' }}>
-                  {IDENTITY_REGISTRY}
-                  <a href={`https://testnet.arcscan.app/address/${IDENTITY_REGISTRY}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
-                    Explorer ↗
-                  </a>
-                </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#ffffff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Cpu size={18} style={{ color: 'var(--warp-warning)' }} />
+                  Contract Registry &amp; Routing
+                </h3>
+                <p style={{ color: 'var(--warp-muted)', fontSize: 12, margin: '4px 0 0 0' }}>
+                  Cryptographic parameters and transaction clearing addresses.
+                </p>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 6 }}>
-                <span style={{ color: 'var(--warp-muted)' }}>Reputation Registry:</span>
-                <span style={{ color: '#ffffff' }}>
-                  {REPUTATION_REGISTRY}
-                  <a href={`https://testnet.arcscan.app/address/${REPUTATION_REGISTRY}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
-                    Explorer ↗
-                  </a>
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 6 }}>
-                <span style={{ color: 'var(--warp-muted)' }}>Clearing &amp; Escrow Manager:</span>
-                <span style={{ color: '#ffffff' }}>
-                  {JOBCHAIN_CONTRACT_ADDRESS}
-                  <a href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
-                    Explorer ↗
-                  </a>
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 6 }}>
-                <span style={{ color: 'var(--warp-muted)' }}>Gateway Vault:</span>
-                <span style={{ color: '#ffffff' }}>
-                  {GATEWAY_VAULT_ADDRESS}
-                  <a href={`https://testnet.arcscan.app/address/${GATEWAY_VAULT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
-                    Explorer ↗
-                  </a>
-                </span>
-              </div>
+              <button
+                onClick={() => setShowTechDetails(!showTechDetails)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--warp-border)',
+                  color: 'var(--warp-muted)',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+                className="network-badge-hover"
+              >
+                {showTechDetails ? "Hide Hex Parameters" : "Show Hex Parameters"}
+              </button>
             </div>
+
+            {showTechDetails ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 12, fontFamily: 'monospace' }} className="tab-fade-in">
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                  <span style={{ color: 'var(--warp-muted)' }}>Identity Registry (ERC-8004):</span>
+                  <span style={{ color: '#ffffff' }}>
+                    {IDENTITY_REGISTRY}
+                    <a href={`https://testnet.arcscan.app/address/${IDENTITY_REGISTRY}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                      Explorer ↗
+                    </a>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                  <span style={{ color: 'var(--warp-muted)' }}>Reputation Registry:</span>
+                  <span style={{ color: '#ffffff' }}>
+                    {REPUTATION_REGISTRY}
+                    <a href={`https://testnet.arcscan.app/address/${REPUTATION_REGISTRY}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                      Explorer ↗
+                    </a>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                  <span style={{ color: 'var(--warp-muted)' }}>Clearing &amp; Escrow Manager:</span>
+                  <span style={{ color: '#ffffff' }}>
+                    {JOBCHAIN_CONTRACT_ADDRESS}
+                    <a href={`https://testnet.arcscan.app/address/${JOBCHAIN_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                      Explorer ↗
+                    </a>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--warp-border)', borderRadius: 8 }}>
+                  <span style={{ color: 'var(--warp-muted)' }}>Gateway Vault:</span>
+                  <span style={{ color: '#ffffff' }}>
+                    {GATEWAY_VAULT_ADDRESS}
+                    <a href={`https://testnet.arcscan.app/address/${GATEWAY_VAULT_ADDRESS}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--warp-primary)', marginLeft: 8, textDecoration: 'underline' }}>
+                      Explorer ↗
+                    </a>
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+                <span style={{ fontSize: 11, background: 'rgba(255, 163, 26, 0.08)', border: '1px solid rgba(255, 163, 26, 0.2)', color: '#FFA31A', padding: '4px 10px', borderRadius: 20, fontWeight: 'bold' }}>
+                  Identity Enabled
+                </span>
+                <span style={{ fontSize: 11, background: 'rgba(62, 166, 255, 0.08)', border: '1px solid rgba(62, 166, 255, 0.2)', color: '#3EA6FF', padding: '4px 10px', borderRadius: 20, fontWeight: 'bold' }}>
+                  Reputation System Active
+                </span>
+                <span style={{ fontSize: 11, background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#10B981', padding: '4px 10px', borderRadius: 20, fontWeight: 'bold' }}>
+                  Escrow Settlement Ready
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
