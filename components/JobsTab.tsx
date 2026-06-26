@@ -286,11 +286,70 @@ export function JobsTab({ devMode }: { devMode: boolean }) {
       throw new Error('Provider ID is not registered on official ERC-8004 Credential Registry')
     }
 
+    // Validate agent active state and collateral stake on JobChain contract
+    let requiredCapabilities = ''
+    try {
+      const agent = await publicClient!.readContract({
+        address: JOBCHAIN_CONTRACT_ADDRESS,
+        abi: jobChainAbi,
+        functionName: 'getAgent',
+        args: [BigInt(pickupAgentId)],
+      }) as unknown as any[]
+
+      const stakedAmount = BigInt(agent[3])
+      const isActive = Boolean(agent[7])
+
+      if (!isActive || stakedAmount < 1000000n) {
+        throw new Error(`Provider #${pickupAgentId} does not have an active safety deposit (min 1.00 USDC). Please deposit safety collateral first in the "Deposit Safety Collateral" panel.`)
+      }
+    } catch (err: any) {
+      if (err.message.includes('safety deposit')) throw err;
+      throw new Error(`Provider #${pickupAgentId} is not initialized/active on JobChain. Please deposit safety collateral first.`)
+    }
+
+    // Fetch the job required capabilities to determine if ZK proof attestation is needed
+    try {
+      const job = await publicClient!.readContract({
+        address: JOBCHAIN_CONTRACT_ADDRESS,
+        abi: jobChainAbi,
+        functionName: 'getJob',
+        args: [BigInt(pickupJobId)],
+      }) as unknown as any[]
+      
+      requiredCapabilities = job[2] as string
+    } catch (err) {
+      console.warn('Failed to pre-fetch job details:', err)
+    }
+
+    // Automatically generate valid ZK capability attestation proof if none is supplied
+    let capabilityProof = pickupProof
+    if ((!capabilityProof || capabilityProof === '0x') && requiredCapabilities && requiredCapabilities.length > 0) {
+      console.log('[SCA] 🔐 Requesting ZK capability attestation signature for:', requiredCapabilities)
+      try {
+        const res = await fetch('/api/zk-proof/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'capability',
+            agentId: pickupAgentId.toString(),
+            capabilities: requiredCapabilities
+          })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          capabilityProof = data.signature
+          console.log('[SCA] 🔑 Auto-injected ZK capability signature:', capabilityProof)
+        }
+      } catch (err) {
+        console.error('Failed to auto-generate capability proof:', err)
+      }
+    }
+
     return await writeContractAsync({
       address: JOBCHAIN_CONTRACT_ADDRESS,
       abi: jobChainAbi,
       functionName: 'pickupJob',
-      args: [BigInt(pickupJobId), BigInt(pickupAgentId), (pickupProof || '0x') as `0x${string}`]
+      args: [BigInt(pickupJobId), BigInt(pickupAgentId), (capabilityProof || '0x') as `0x${string}`]
     })
   })
 
@@ -306,11 +365,34 @@ export function JobsTab({ devMode }: { devMode: boolean }) {
   })
 
   const handleSubmit = () => txToast('Submitting result...', async () => {
+    let executionProof = submitProof
+    if (!executionProof || executionProof === '0x') {
+      console.log('[SCA] 🔐 Requesting ZK work execution proof signature...')
+      try {
+        const res = await fetch('/api/zk-proof/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'execution',
+            jobId: submitJobId.toString(),
+            resultHash: resultHash
+          })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          executionProof = data.signature
+          console.log('[SCA] 🔑 Auto-injected ZK execution proof signature:', executionProof)
+        }
+      } catch (err) {
+        console.error('Failed to auto-generate execution proof:', err)
+      }
+    }
+
     return await writeContractAsync({
       address: JOBCHAIN_CONTRACT_ADDRESS,
       abi: jobChainAbi,
       functionName: 'submitResult',
-      args: [BigInt(submitJobId), resultHash, (submitProof || '0x') as `0x${string}`]
+      args: [BigInt(submitJobId), resultHash, (executionProof || '0x') as `0x${string}`]
     })
   })
 
