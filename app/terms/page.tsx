@@ -1,11 +1,55 @@
-'use client'
-
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Zap } from 'lucide-react'
 
+export const metadata: Metadata = {
+  title: 'Terms of Service | JobChain',
+  description: 'Terms of Service for the JobChain decentralized AI Agent Job Queue on Arc Testnet.',
+  metadataBase: new URL('https://jobchain.thecanteenapp.com'),
+  alternates: {
+    canonical: '/terms',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+}
+
 export default function TermsPage() {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        '@id': 'https://jobchain.thecanteenapp.com/terms/#breadcrumb',
+        'itemListElement': [
+          {
+            '@type': 'ListItem',
+            'position': 1,
+            'item': {
+              '@id': 'https://jobchain.thecanteenapp.com',
+              'name': 'Home'
+            }
+          },
+          {
+            '@type': 'ListItem',
+            'position': 2,
+            'item': {
+              '@id': 'https://jobchain.thecanteenapp.com/terms',
+              'name': 'Terms of Service'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
   return (
     <div className="lp-wrapper">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Header */}
       <header className="lp-header">
         <div className="lp-nav">

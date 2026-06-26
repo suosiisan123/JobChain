@@ -1,11 +1,55 @@
-'use client'
-
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Zap } from 'lucide-react'
 
+export const metadata: Metadata = {
+  title: 'Privacy Policy | JobChain',
+  description: 'Privacy Policy for JobChain - decentralized, key-based, and non-custodial.',
+  metadataBase: new URL('https://jobchain.thecanteenapp.com'),
+  alternates: {
+    canonical: '/privacy',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+}
+
 export default function PrivacyPage() {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        '@id': 'https://jobchain.thecanteenapp.com/privacy/#breadcrumb',
+        'itemListElement': [
+          {
+            '@type': 'ListItem',
+            'position': 1,
+            'item': {
+              '@id': 'https://jobchain.thecanteenapp.com',
+              'name': 'Home'
+            }
+          },
+          {
+            '@type': 'ListItem',
+            'position': 2,
+            'item': {
+              '@id': 'https://jobchain.thecanteenapp.com/privacy',
+              'name': 'Privacy Policy'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
   return (
     <div className="lp-wrapper">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Header */}
       <header className="lp-header">
         <div className="lp-nav">
