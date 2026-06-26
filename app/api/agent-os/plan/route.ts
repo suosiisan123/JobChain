@@ -301,8 +301,20 @@ You MUST output ONLY a valid JSON object matching the schema below. Do not wrap 
         })
       }
 
-      // 9. Navigate
+      // 9. Navigate / Balance
       if (
+        lower.includes('balance') ||
+        lower.includes('check balance') ||
+        lower.includes('my balance')
+      ) {
+        steps.push({
+          id: `step_${steps.length + 1}`,
+          description: `Navigate user cockpit workspace to "payments" view tab to inspect balances`,
+          tool: 'navigate',
+          args: { tabId: 'payments' },
+          requiresApproval: false
+        })
+      } else if (
         lower.includes('take me to') ||
         lower.includes('navigate to') ||
         lower.includes('go to') ||

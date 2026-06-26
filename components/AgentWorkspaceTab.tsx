@@ -7,7 +7,8 @@ import { parseUnits } from 'viem'
 import { 
   Send, Sparkles, Terminal, Activity, ListTodo, CheckCircle2, 
   HelpCircle, Play, RefreshCw, Cpu, Award, Shield, Key, AlertOctagon, 
-  Clock, ShieldCheck, CheckCircle, Edit2, Save, SkipForward, X, Zap
+  Clock, ShieldCheck, CheckCircle, Edit2, Save, SkipForward, X, Zap,
+  Users, Briefcase, Check, AlertTriangle, Search
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { 
@@ -48,6 +49,57 @@ interface ToolCall {
   tool: string
   args: any
   timestamp: string
+}
+
+function renderLogMessage(message: string) {
+  let emoji = '';
+  let cleaned = message;
+  
+  if (message.startsWith('✅') || message.startsWith('✔')) {
+    emoji = 'success';
+    cleaned = message.replace(/^(✅|✔)\s*/, '');
+  } else if (message.startsWith('❌')) {
+    emoji = 'error';
+    cleaned = message.replace(/^❌\s*/, '');
+  } else if (message.startsWith('⚠️')) {
+    emoji = 'warn';
+    cleaned = message.replace(/^⚠️\s*/, '');
+  } else if (message.startsWith('🔍')) {
+    emoji = 'info';
+    cleaned = message.replace(/^🔍\s*/, '');
+  } else if (message.startsWith('🤖')) {
+    emoji = 'agent';
+    cleaned = message.replace(/^🤖\s*/, '');
+  } else if (message.startsWith('⚡')) {
+    emoji = 'gas';
+    cleaned = message.replace(/^⚡\s*/, '');
+  }
+
+  const renderIcon = () => {
+    switch (emoji) {
+      case 'success':
+        return <Check size={10} style={{ color: 'var(--warp-success)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      case 'error':
+        return <X size={10} style={{ color: 'var(--warp-error)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      case 'warn':
+        return <AlertTriangle size={10} style={{ color: 'var(--warp-warning)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      case 'info':
+        return <Search size={10} style={{ color: 'var(--warp-cyan)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      case 'agent':
+        return <Cpu size={10} style={{ color: 'var(--warp-primary)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      case 'gas':
+        return <Zap size={10} style={{ color: 'var(--warp-warning)', marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+      default:
+        return null;
+    }
+  }
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap' }}>
+      {renderIcon()}
+      <span>{cleaned}</span>
+    </span>
+  );
 }
 
 const QUICK_START_CARDS = [
@@ -199,6 +251,20 @@ export function AgentWorkspaceTab({ setActiveTab }: AgentWorkspaceTabProps) {
       localStorage.setItem('jobchain_agent_history', JSON.stringify(history))
     }
   }, [history, mounted])
+
+  useEffect(() => {
+    if (mounted && typeof window !== 'undefined') {
+      localStorage.setItem('jobchain_agent_running', isRunning ? 'true' : 'false')
+      window.dispatchEvent(new Event('jobchain_agent_status_change'))
+    }
+  }, [isRunning, mounted])
+
+  useEffect(() => {
+    if (mounted && typeof window !== 'undefined') {
+      localStorage.setItem('jobchain_agent_planning', isPlanning ? 'true' : 'false')
+      window.dispatchEvent(new Event('jobchain_agent_status_change'))
+    }
+  }, [isPlanning, mounted])
 
   // Simulated Live Activity Feed (Phase 8)
   const [activityFeed, setActivityFeed] = useState<string[]>([
@@ -946,30 +1012,59 @@ export function AgentWorkspaceTab({ setActiveTab }: AgentWorkspaceTabProps) {
           <Sparkles size={16} style={{ color: 'var(--warp-primary)' }} />
           What would you like to do today?
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-          {QUICK_START_CARDS.map((card, i) => (
-            <div
-              key={i}
-              onClick={() => {
-                if (card.action === 'demo') {
-                  loadDemoWorkflow()
-                } else {
-                  handleQuickAction(card.prompt)
-                }
-              }}
-              style={{
-                background: 'rgba(22, 22, 25, 0.4)',
-                border: '1px solid var(--warp-border)',
-                borderRadius: 8,
-                padding: 12,
-                cursor: 'pointer',
-              }}
-              className="quick-start-card"
-            >
-              <div style={{ fontSize: 12, fontWeight: 'bold', color: 'var(--warp-primary)', marginBottom: 4 }}>{card.title}</div>
-              <div style={{ fontSize: 10, color: 'var(--warp-muted)', lineHeight: 1.4 }}>{card.desc}</div>
-            </div>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          {QUICK_START_CARDS.map((card, i) => {
+            const getIcon = () => {
+              switch (card.title) {
+                case "Hire AI Workers": return <Users size={16} style={{ color: 'var(--warp-primary)' }} />
+                case "Create a New Task": return <Briefcase size={16} style={{ color: 'var(--warp-success)' }} />
+                case "Bridge USDC (CCTP)": return <RefreshCw size={16} style={{ color: 'var(--warp-cyan)' }} />
+                case "Forex Swap": return <Zap size={16} style={{ color: 'var(--warp-warning)' }} />
+                case "Multi-Chain Settle": return <Activity size={16} style={{ color: 'var(--warp-magenta)' }} />
+                case "Release Escrow Funds": return <CheckCircle2 size={16} style={{ color: 'var(--warp-success)' }} />
+                case "Explore Demo Workflow": return <Play size={16} style={{ color: 'var(--warp-cyan)' }} />
+                case "Analyze Reviews": return <Sparkles size={16} style={{ color: 'var(--warp-primary)' }} />
+                default: return <Cpu size={16} />
+              }
+            }
+            const getEst = () => {
+              switch (card.title) {
+                case "Hire AI Workers": return "~30s"
+                case "Create a New Task": return "~20s"
+                case "Bridge USDC (CCTP)": return "~2m"
+                case "Forex Swap": return "~15s"
+                case "Multi-Chain Settle": return "~3m"
+                case "Release Escrow Funds": return "~10s"
+                case "Explore Demo Workflow": return "Instant"
+                case "Analyze Reviews": return "~45s"
+                default: return "~1m"
+              }
+            }
+            return (
+              <div
+                key={i}
+                onClick={() => {
+                  if (card.action === 'demo') {
+                    loadDemoWorkflow()
+                  } else {
+                    handleQuickAction(card.prompt)
+                  }
+                }}
+                className="quick-start-interactive-card"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {getIcon()}
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{card.title}</span>
+                  </div>
+                  <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--warp-border)', color: 'var(--warp-muted)', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold' }}>
+                    {getEst()}
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--warp-muted)', lineHeight: 1.4, margin: '8px 0 0 0' }}>{card.desc}</p>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -980,40 +1075,48 @@ export function AgentWorkspaceTab({ setActiveTab }: AgentWorkspaceTabProps) {
         <div style={{ display: 'flex', flexDirection: 'column', background: 'rgba(22,22,25,0.4)', border: '1px solid var(--warp-border)', borderRadius: 12, overflow: 'hidden', height: 600 }}>
           
           {/* Active Wallet Banner */}
-          <div style={{ padding: '12px 16px', background: 'rgba(255, 184, 0, 0.05)', borderBottom: '1px solid var(--warp-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ padding: '12px 16px', background: 'rgba(255, 184, 0, 0.03)', borderBottom: '1px solid var(--warp-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--warp-primary)' }}>
               <Cpu size={16} />
               <span style={{ fontSize: 11, fontWeight: 'bold', letterSpacing: 1 }}>WORKSPACE COORDINATOR ACTIVE</span>
             </div>
             <div style={{ fontSize: 10, color: 'var(--warp-muted)' }}>
-              SIGNER: <span style={{ color: 'var(--warp-success)', fontFamily: 'monospace' }}>{address ? address.slice(0, 8) + '...' : 'DISCONNECTED'}</span>
+              SIGNER: <span style={{ color: 'var(--warp-success)', fontFamily: 'monospace' }}>{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'DISCONNECTED'}</span>
             </div>
           </div>
 
           {/* Chat Feed */}
-          <div ref={chatContainerRef} style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {messages.map((msg, idx) => (
-              <div 
-                key={idx} 
-                style={{
-                  alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '85%',
-                  background: msg.sender === 'user' ? 'rgba(255, 184, 0, 0.08)' : msg.sender === 'system' ? 'rgba(247, 118, 142, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                  border: msg.sender === 'user' ? '1px solid rgba(255, 184, 0, 0.15)' : msg.sender === 'system' ? '1px solid rgba(247, 118, 142, 0.15)' : '1px solid var(--warp-border)',
-                  borderRadius: 8,
-                  padding: '10px 14px',
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                  color: msg.sender === 'system' ? 'var(--warp-error)' : 'var(--warp-text)'
-                }}
-              >
-                <div style={{ fontSize: 9, color: 'var(--warp-muted)', marginBottom: 4, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span>{msg.sender.toUpperCase()}</span>
-                  <span>{msg.timestamp}</span>
+          <div ref={chatContainerRef} style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {messages.map((msg, idx) => {
+              const isUser = msg.sender === 'user'
+              const isSystem = msg.sender === 'system'
+              return (
+                <div 
+                  key={idx} 
+                  className={`chat-message-bubble ${isUser ? 'user' : isSystem ? 'system' : 'agent'}`}
+                >
+                  <div style={{ fontSize: 9, color: 'var(--warp-muted)', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 12, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <span>{msg.sender}</span>
+                    <span>{msg.timestamp}</span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{msg.text}</div>
                 </div>
-                <div>{msg.text}</div>
+              )
+            })}
+
+            {/* Real-time Thinking Badges */}
+            {isPlanning && (
+              <div className="thinking-badge-container">
+                <RefreshCw size={12} className="spin-animation" style={{ color: 'var(--warp-primary)' }} />
+                <span>AI Orchestrator is formulating optimal execution path...</span>
               </div>
-            ))}
+            )}
+            {isRunning && (
+              <div className="thinking-badge-container">
+                <Cpu size={12} className="spin-animation" style={{ color: 'var(--warp-success)' }} />
+                <span>Executing on-chain operations & verifying state...</span>
+              </div>
+            )}
           </div>
 
           {/* AI Suggestions above chat input (Phase 5) */}
@@ -1131,15 +1234,35 @@ export function AgentWorkspaceTab({ setActiveTab }: AgentWorkspaceTabProps) {
             )}
             
             {steps.length === 0 ? (
-              <div style={{ fontSize: 11, color: 'var(--warp-muted)', padding: '24px 12px', background: 'rgba(7, 7, 9, 0.2)', borderRadius: 8, border: '1px dashed var(--warp-border)' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: 6 }}>No active plan yet.</div>
-                Try one of these goals:
-                <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
-                  <li>Create a sentiment analysis task</li>
-                  <li>Verify completed dataset audits</li>
-                  <li>Hire an autonomous AI worker</li>
-                  <li>Release locked escrow payments</li>
-                </ul>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '32px 16px',
+                background: 'rgba(7, 7, 9, 0.2)',
+                borderRadius: 8,
+                border: '1px dashed var(--warp-border)',
+                textAlign: 'center'
+              }}>
+                <img 
+                  src="/images/jobchain_swarm_coordinator.png" 
+                  alt="AI Coordinator Core" 
+                  style={{
+                    width: 110,
+                    height: 110,
+                    objectFit: 'contain',
+                    marginBottom: 16,
+                    filter: 'drop-shadow(0 8px 24px rgba(143, 118, 255, 0.15))'
+                  }}
+                  className="illustration-float"
+                />
+                <div style={{ fontSize: 12, fontWeight: 'bold', color: '#ffffff', marginBottom: 6 }}>
+                  Orchestrator Idle
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--warp-muted)', maxWidth: '280px', lineHeight: 1.4 }}>
+                  Awaiting goals to formulate clearing routes. Type a prompt on the left or select a quick action template.
+                </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1327,9 +1450,11 @@ export function AgentWorkspaceTab({ setActiveTab }: AgentWorkspaceTabProps) {
                     <span style={{ 
                       color: log.type === 'success' ? 'var(--warp-success)' :
                              log.type === 'error' ? 'var(--warp-error)' :
-                             log.type === 'tx' ? 'var(--warp-primary)' : 'var(--warp-muted)'
+                             log.type === 'tx' ? 'var(--warp-primary)' : 'var(--warp-muted)',
+                      display: 'inline-flex',
+                      alignItems: 'center'
                     }}>
-                      {log.message}
+                      {renderLogMessage(log.message)}
                     </span>
                     {log.txHash && (
                       <a 

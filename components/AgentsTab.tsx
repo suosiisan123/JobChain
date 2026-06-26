@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePublicClient } from 'wagmi'
 import { parseUnits, formatUnits, parseAbiItem } from 'viem'
-import { UserPlus, Shield, Trophy, Star, Wallet, HelpCircle } from 'lucide-react'
+import { UserPlus, Shield, Trophy, Star, Wallet, HelpCircle, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
 import {
@@ -97,17 +97,36 @@ export function AgentsTab() {
   async function fetchAgents() {
     if (!publicClient) return
     try {
-      const latestBlock = await publicClient.getBlockNumber()
-      const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
+      // Scan up to 250 tokens in parallel (since Arc RPC restricts getLogs to 10k block range)
+      const maxTokenId = 250
+      const tokenIds = Array.from({ length: maxTokenId }, (_, i) => BigInt(i))
+      const owners = await Promise.all(
+        tokenIds.map(id =>
+          publicClient.readContract({
+            address: IDENTITY_REGISTRY,
+            abi: identityRegistryAbi,
+            functionName: 'ownerOf',
+            args: [id],
+          }).catch(() => null)
+        )
+      )
 
-      // Load minted tokens
-      const transferLogs = await publicClient.getLogs({
-        address: IDENTITY_REGISTRY,
-        event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-        args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
-        fromBlock,
-        toBlock: latestBlock,
-      })
+      // Filter tokenIds that actually exist
+      const activeTokens = tokenIds
+        .map((id, i) => ({ id, owner: owners[i] }))
+        .filter(t => t.owner !== null)
+
+      // Fetch metadata URIs in parallel
+      const uris = await Promise.all(
+        activeTokens.map(t =>
+          publicClient.readContract({
+            address: IDENTITY_REGISTRY,
+            abi: identityRegistryAbi,
+            functionName: 'tokenURI',
+            args: [t.id],
+          }).catch(() => '')
+        )
+      )
 
       // Load wallet set database mapping
       let walletsMap: Record<string, { address: string }> = {}
@@ -120,9 +139,10 @@ export function AgentsTab() {
       }
 
       const list: AgentData[] = []
-      for (const log of transferLogs) {
-        const tokenId = log.args.tokenId!
-        const owner = log.args.to!
+      for (let i = 0; i < activeTokens.length; i++) {
+        const tokenId = activeTokens[i].id
+        const owner = activeTokens[i].owner as string
+        const metaURI = uris[i]
         const walletInfo = walletsMap[tokenId.toString()]
 
         let usdcBal = '—'
@@ -157,14 +177,14 @@ export function AgentsTab() {
           let agentName = `Agent #${tokenId.toString()}`
           let agentCaps = 'general'
           try {
-            const metaURI = await publicClient.readContract({
-              address: IDENTITY_REGISTRY,
-              abi: identityRegistryAbi,
-              functionName: 'tokenURI',
-              args: [tokenId],
-            }) as string
             
-            if (metaURI.includes("ipfs://")) {
+            if (metaURI.startsWith("ipfs://bafkreib-name-")) {
+              const parts = metaURI.replace("ipfs://bafkreib-name-", "").split("-caps-")
+              if (parts.length === 2) {
+                agentName = decodeURIComponent(parts[0])
+                agentCaps = decodeURIComponent(parts[1])
+              }
+            } else if (metaURI.includes("ipfs://")) {
               if (tokenId === 0n) {
                 agentName = "Sentinel-Analyzer"
                 agentCaps = "nlp,sentiment,analytics"
@@ -178,8 +198,15 @@ export function AgentsTab() {
                 agentName = "Compliance-Pipeline"
                 agentCaps = "data-extract,etl,csv-transform"
               } else {
-                agentName = `Clearing-Provider-${tokenId.toString()}`
-                agentCaps = "nlp,data"
+                const cleanPart = metaURI.replace("ipfs://bafkreib-", "")
+                const parts = cleanPart.split("-")
+                if (parts.length >= 2) {
+                  agentName = parts[0]
+                  agentCaps = parts.slice(1).join(", ")
+                } else {
+                  agentName = `Clearing-Provider-${tokenId.toString()}`
+                  agentCaps = "nlp,data"
+                }
               }
             }
           } catch { /* ignore */ }
@@ -232,7 +259,7 @@ export function AgentsTab() {
     setLoading(true)
     const tid = toast.loading('Registering on official ERC-8004 Credential Registry...')
     try {
-      const metadataURI = `ipfs://bafkreib-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${capabilities.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+      const metadataURI = `ipfs://bafkreib-name-${encodeURIComponent(name)}-caps-${encodeURIComponent(capabilities)}`
       const hash = await writeContractAsync({
         address: IDENTITY_REGISTRY,
         abi: identityRegistryAbi,
@@ -293,7 +320,9 @@ export function AgentsTab() {
         <br />Total Registered: {agents.length} providers
         {address && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(122, 162, 247, 0.08)', borderRadius: 6, border: '1px solid rgba(122, 162, 247, 0.15)', fontSize: 11, color: 'var(--warp-text)' }}>
-            <span style={{ color: 'var(--warp-cyan)', fontWeight: 600 }}>⚡ Clearing Fee Sponsorship:</span>
+            <span style={{ color: 'var(--warp-cyan)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Zap size={11} /> Clearing Fee Sponsorship:
+            </span>
             <span style={{ marginLeft: 6 }}>
               Onboarding actions (Provider Registration and Collateral Setup) are subsidized by the system coordinator.
               {sponsorshipRemaining !== null && (

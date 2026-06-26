@@ -46,33 +46,48 @@ export function IdentityTab() {
       if (!publicClient) return
       setLoadingAgents(true)
       try {
-        const latestBlock = await publicClient.getBlockNumber()
-        const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
+        // Scan up to 250 tokens in parallel (since Arc RPC restricts getLogs to 10k block range)
+        const maxTokenId = 250
+        const tokenIds = Array.from({ length: maxTokenId }, (_, i) => BigInt(i))
+        const owners = await Promise.all(
+          tokenIds.map(id =>
+            publicClient.readContract({
+              address: IDENTITY_REGISTRY,
+              abi: identityRegistryAbi,
+              functionName: 'ownerOf',
+              args: [id],
+            }).catch(() => null)
+          )
+        )
 
-        const transferLogs = await publicClient.getLogs({
-          address: IDENTITY_REGISTRY,
-          event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-          args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
-          fromBlock,
-          toBlock: latestBlock,
-        })
+        // Filter tokenIds that actually exist
+        const activeTokens = tokenIds
+          .map((id, i) => ({ id, owner: owners[i] }))
+          .filter(t => t.owner !== null)
 
-        const agents: RegisteredAgent[] = []
-        for (const log of transferLogs.slice(-20)) { // last 20 registrations
-          const tokenId = log.args.tokenId!
-          const owner = log.args.to!
-          let metaURI = '—'
-          try {
-            metaURI = await publicClient.readContract({
+        // Fetch metadata URIs in parallel for active tokens
+        const uris = await Promise.all(
+          activeTokens.map(t =>
+            publicClient.readContract({
               address: IDENTITY_REGISTRY,
               abi: identityRegistryAbi,
               functionName: 'tokenURI',
-              args: [tokenId],
-            }) as string
-          } catch { /* skip */ }
+              args: [t.id],
+            }).catch(() => '')
+          )
+        )
+
+        const agents: RegisteredAgent[] = []
+        for (let i = 0; i < activeTokens.length; i++) {
+          const tokenId = activeTokens[i].id
+          const owner = activeTokens[i].owner as string
+          const metaURI = uris[i]
           agents.push({ tokenId, owner, metadataURI: metaURI })
         }
-        setRegisteredAgents(agents.reverse())
+        
+        // Take last 20 registrations for display
+        const last20 = agents.slice(-20)
+        setRegisteredAgents(last20.reverse())
 
         // Check if connected wallet has agents
         if (address) {

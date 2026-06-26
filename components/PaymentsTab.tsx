@@ -12,6 +12,8 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
 import { useSmartWallet } from '@/hooks/useSmartWallet'
+import { useModal } from '@/hooks/useModal'
+import { DepositModalContent, WithdrawModalContent } from './DashboardTab'
 import {
   JOBCHAIN_CONTRACT_ADDRESS,
   USDC_ADDRESS_ARC,
@@ -35,6 +37,7 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
   const { address, isConnected, isPasskey, writeContractAsync } = useSmartWallet()
   const { openConnectModal } = useConnectModal()
   const publicClient = usePublicClient()
+  const { openModal, closeModal } = useModal()
 
   // Balance and Yield states
   const [userUsdcBal, setUserUsdcBal] = useState('0.00')
@@ -48,12 +51,7 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
   const [aiAllocationProgress, setAiAllocationProgress] = useState(0)
   const [aiAllocated, setAiAllocated] = useState(false)
 
-  // Drawers
-  const [showDepositDrawer, setShowDepositDrawer] = useState(false)
-  const [showWithdrawDrawer, setShowWithdrawDrawer] = useState(false)
-  const [depositAmount, setDepositAmount] = useState('')
-  const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [depositCurrency, setDepositCurrency] = useState<'USDC' | 'EURC'>('USDC')
+  // Loading states for modals
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
 
@@ -152,33 +150,31 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
     setAiAllocating(true)
     setAiAllocationProgress(0)
 
+    let progress = 0;
     const interval = setInterval(() => {
-      setAiAllocationProgress(prev => {
-        if (prev >= 100) {
+      progress += 10;
+      if (progress >= 100) {
           clearInterval(interval)
           setAiAllocating(false)
           setAiAllocated(true)
           localStorage.setItem('active_allocated', 'true')
           toast.success(`Allocated successfully to ${STRATEGY_INFO[strategyId as keyof typeof STRATEGY_INFO].name}!`)
-          return 100
-        }
-        return prev + 10
-      })
+          setAiAllocationProgress(100)
+      } else {
+        setAiAllocationProgress(progress)
+      }
     }, 200)
   }
 
   // Handle Deposit
-  const handleDeposit = async () => {
-    if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      toast.error('Please enter a valid amount')
-      return
-    }
+  const handleDeposit = async (amountStr: string, currency: 'USDC' | 'EURC') => {
     setDepositing(true)
-    const tid = toast.loading('Approving USDC for vault...')
+    const tid = toast.loading(`Approving ${currency} for vault...`)
     try {
-      const amount = parseUnits(depositAmount, 6)
+      const amount = parseUnits(amountStr, 6)
+      const tokenAddress = currency === 'USDC' ? USDC_ADDRESS_ARC : EURC_ADDRESS_ARC
       await writeContractAsync({
-        address: USDC_ADDRESS_ARC,
+        address: tokenAddress,
         abi: usdcAbi,
         functionName: 'approve',
         args: [GATEWAY_VAULT_ADDRESS, amount],
@@ -197,34 +193,25 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
         { id: tid, duration: 6000 }
       )
       
-      const newBal = (parseFloat(gatewayVaultBal) + parseFloat(depositAmount)).toFixed(2)
+      const newBal = (parseFloat(gatewayVaultBal) + parseFloat(amountStr)).toFixed(2)
       setGatewayVaultBal(newBal)
       localStorage.setItem('gateway_vault_bal', newBal)
       
-      setDepositAmount('')
-      setShowDepositDrawer(false)
       fetchBalances()
     } catch (err: any) {
       toast.error(err?.shortMessage || 'Deposit failed', { id: tid })
+      throw err
     } finally {
       setDepositing(false)
     }
   }
 
   // Handle Withdraw
-  const handleWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
-      toast.error('Please enter a valid amount')
-      return
-    }
-    if (parseFloat(withdrawAmount) > parseFloat(gatewayVaultBal)) {
-      toast.error('Insufficient vault balance')
-      return
-    }
+  const handleWithdraw = async (amountStr: string) => {
     setWithdrawing(true)
     const tid = toast.loading('Initiating secure vault release...')
     try {
-      const amount = parseUnits(withdrawAmount, 6)
+      const amount = parseUnits(amountStr, 6)
       const hash = await writeContractAsync({
         address: GATEWAY_VAULT_ADDRESS,
         abi: gatewayVaultAbi,
@@ -237,18 +224,52 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
         { id: tid, duration: 6000 }
       )
       
-      const newBal = (parseFloat(gatewayVaultBal) - parseFloat(withdrawAmount)).toFixed(2)
+      const newBal = (parseFloat(gatewayVaultBal) - parseFloat(amountStr)).toFixed(2)
       setGatewayVaultBal(newBal)
       localStorage.setItem('gateway_vault_bal', newBal)
       
-      setWithdrawAmount('')
-      setShowWithdrawDrawer(false)
       fetchBalances()
     } catch (err: any) {
       toast.error(err?.shortMessage || 'Withdrawal failed', { id: tid })
+      throw err
     } finally {
       setWithdrawing(false)
     }
+  }
+
+  const openDepositModal = () => {
+    openModal({
+      type: 'custom',
+      priority: 'P2',
+      title: 'Deposit Capital',
+      description: 'Fund your automated yield optimization portfolio.',
+      content: (
+        <DepositModalContent 
+          userUsdcBal={userUsdcBal} 
+          userEurcBal={userEurcBal} 
+          onConfirm={handleDeposit} 
+          onClose={closeModal} 
+        />
+      ),
+      preventBackdropClose: false
+    })
+  }
+
+  const openWithdrawModal = () => {
+    openModal({
+      type: 'custom',
+      priority: 'P2',
+      title: 'Withdraw Capital',
+      description: 'Return assets back to your external Web3 address.',
+      content: (
+        <WithdrawModalContent 
+          gatewayVaultBal={gatewayVaultBal} 
+          onConfirm={handleWithdraw} 
+          onClose={closeModal} 
+        />
+      ),
+      preventBackdropClose: false
+    })
   }
 
   // Handle Bridge Simulation (Circle CCTP visual wrapper)
@@ -326,7 +347,7 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
                 <Wallet size={28} style={{ color: 'var(--warp-muted)', marginBottom: 8 }} />
                 <div style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>No Capital Deposited</div>
                 <p style={{ color: 'var(--warp-muted)', fontSize: 11, maxWidth: 260, margin: '4px 0 16px' }}>Securely deposit USDC into the vault to active AI routing strategies.</p>
-                <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ width: 'auto', padding: '6px 12px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>Deposit Funds</button>
+                <button onClick={openDepositModal} className="warp-btn" style={{ width: 'auto', padding: '6px 12px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold' }}>Deposit Funds</button>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -385,10 +406,10 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
 
                 {/* Quick actions */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <button onClick={() => setShowDepositDrawer(true)} className="warp-btn" style={{ flex: 1, padding: '8px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold', marginTop: 0 }}>
+                  <button onClick={openDepositModal} className="warp-btn" style={{ flex: 1, padding: '8px', fontSize: 11, background: '#0DD393', color: '#000', fontWeight: 'bold', marginTop: 0 }}>
                     Deposit USDC
                   </button>
-                  <button onClick={() => setShowWithdrawDrawer(true)} className="warp-btn secondary" style={{ flex: 1, padding: '8px', fontSize: 11, marginTop: 0 }}>
+                  <button onClick={openWithdrawModal} className="warp-btn secondary" style={{ flex: 1, padding: '8px', fontSize: 11, marginTop: 0 }}>
                     Withdraw
                   </button>
                 </div>
@@ -529,71 +550,7 @@ export function PaymentsTab({ devMode }: PaymentsTabProps) {
         </div>
       </div>
 
-      {/* ── Deposit Drawer ── */}
-      {mounted && showDepositDrawer && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
-          <div style={{ width: '100%', maxWidth: 420, background: '#111218', borderLeft: '1px solid var(--warp-border)', padding: 32, display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', margin: '0 0 8px 0' }}>Deposit Clearing Funds</h2>
-            <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 24px 0', lineHeight: 1.5 }}>
-              Lock USDC or EURC into the non-custodial gateway vault to power automated clearing actions.
-            </p>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              <button onClick={() => setDepositCurrency('USDC')} className={`btn-subtab ${depositCurrency === 'USDC' ? 'active' : ''}`} style={{ flex: 1, padding: '8px' }}>USDC</button>
-              <button onClick={() => setDepositCurrency('EURC')} className={`btn-subtab ${depositCurrency === 'EURC' ? 'active' : ''}`} style={{ flex: 1, padding: '8px' }}>EURC</button>
-            </div>
-
-            <div className="form-field" style={{ marginBottom: 24 }}>
-              <label className="field-label" style={{ color: 'var(--warp-success)' }}>DEPOSIT AMOUNT ({depositCurrency})</label>
-              <input className="warp-input" placeholder="e.g. 50.00 (Stablecoin amount to lock in gateway vault)" type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} disabled={depositing} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
-              <button onClick={handleDeposit} disabled={depositing || !depositAmount} className="warp-btn" style={{ width: '100%', padding: '12px', background: '#0DD393', color: '#000', fontWeight: 'bold', justifyContent: 'center', marginTop: 0 }}>
-                {depositing ? 'Securing Transaction...' : 'Confirm Deposit'}
-              </button>
-              <button onClick={() => setShowDepositDrawer(false)} className="warp-btn secondary" style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 0 }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* ── Withdraw Drawer ── */}
-      {mounted && showWithdrawDrawer && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(4px)' }}>
-          <div style={{ width: '100%', maxWidth: 420, background: '#111218', borderLeft: '1px solid var(--warp-border)', padding: 32, display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', margin: '0 0 8px 0' }}>Release Vault Funds</h2>
-            <p style={{ fontSize: 12, color: 'var(--warp-muted)', margin: '0 0 24px 0', lineHeight: 1.5 }}>
-              Withdraw stablecoin assets directly back to your secure smart wallet.
-            </p>
-
-            <div className="form-field" style={{ marginBottom: 12 }}>
-              <label className="field-label" style={{ color: 'var(--warp-warning)' }}>VAULT BALANCE</label>
-              <div style={{ fontSize: 20, fontWeight: 'bold', fontFamily: 'monospace', color: '#ffffff' }}>
-                {gatewayVaultBal} USDC
-              </div>
-            </div>
-
-            <div className="form-field" style={{ marginBottom: 24 }}>
-              <label className="field-label" style={{ color: 'var(--warp-magenta)' }}>WITHDRAW AMOUNT (USDC)</label>
-              <input className="warp-input" placeholder="e.g. 25.00 (Stablecoin amount to withdraw to smart wallet)" type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} disabled={withdrawing} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
-              <button onClick={handleWithdraw} disabled={withdrawing || !withdrawAmount} className="warp-btn" style={{ width: '100%', padding: '12px', background: 'var(--warp-primary)', color: '#000', fontWeight: 'bold', justifyContent: 'center', marginTop: 0 }}>
-                {withdrawing ? 'Withdrawing...' : 'Confirm Withdrawal'}
-              </button>
-              <button onClick={() => setShowWithdrawDrawer(false)} className="warp-btn secondary" style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 0 }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
     </div>
   )
