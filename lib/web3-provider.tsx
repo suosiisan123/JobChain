@@ -71,6 +71,8 @@ export const config = getDefaultConfig({
 const queryClient = new QueryClient()
 
 import { createContext, useContext, useState, useEffect } from 'react'
+import { ModalContext } from '@/components/modals/ModalProvider'
+import { mapRawError } from '@/components/modals/ErrorMappingEngine'
 import toast from 'react-hot-toast'
 import { createPublicClient, encodeFunctionData } from 'viem'
 import {
@@ -241,6 +243,7 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
 
   // Global transaction lock to prevent concurrent user operations
   const txLockRef = React.useRef(false)
+  const modalContext = useContext(ModalContext)
 
   const writeContractAsync = async (args: {
     address: `0x${string}`
@@ -248,108 +251,225 @@ function SmartWalletProviderInner({ children }: { children: React.ReactNode }) {
     functionName: string
     args?: any[]
   }): Promise<`0x${string}`> => {
-    if (isEoaConnected && eoaAddress) {
-      return await eoaWriteContractAsync(args)
+    const hasModal = !!modalContext
+    let modalId = ''
+    
+    const updateModalSteps = (stepIndex: number, status: 'pending' | 'active' | 'done' | 'failed', txHash?: string, customTitle?: string) => {
+      if (!hasModal) return
+      
+      const stepLabels = [
+        'Preparing Transaction parameters',
+        'Requesting Wallet Signature',
+        'Broadcasting to Arc Node',
+        'Awaiting Block Finality'
+      ]
+      
+      const newSteps = stepLabels.map((lbl, idx) => ({
+        label: lbl,
+        status: idx < stepIndex ? 'done' as const : idx === stepIndex ? status : 'pending' as const
+      }))
+
+      modalContext.openModal({
+        id: modalId,
+        type: txHash ? 'success' : 'processing',
+        priority: 'P1',
+        title: customTitle || `Transaction: ${args.functionName}`,
+        description: txHash 
+          ? `Transaction successfully executed and confirmed on Arc Testnet.`
+          : `Processing on-chain action. Please keep this window open.`,
+        steps: newSteps,
+        txHash,
+        explorerLink: txHash ? `https://testnet.arcscan.app/tx/${txHash}` : undefined,
+        preventBackdropClose: true,
+        preventEscClose: true,
+        showCloseButton: !!txHash
+      })
     }
 
-    if (passkeyAddress && passkeyEmail) {
-      // Prevent concurrent submissions
-      if (txLockRef.current) {
-        toast.error('A transaction is already in progress. Please wait for it to complete.')
-        throw new Error('Transaction already in progress')
-      }
-      txLockRef.current = true
+    // NOTE: Do NOT open the processing modal before sendUserOperation!
+    // The modal triggers React re-renders + DOM mutations that interfere with
+    // the SDK's internal WebAuthn signing flow, causing it to hang silently.
+    // Modal will be opened AFTER WebAuthn signing completes.
 
-      let activeAccount = passkeyAccount
-      if (!activeAccount) {
-        const storedCred = localStorage.getItem('jobchain_passkey_credential')
-        if (storedCred) {
-          const parsedCred = JSON.parse(storedCred)
-          activeAccount = await toCircleSmartAccount({
-            client,
-            owner: toWebAuthnAccount({ credential: parsedCred }) as WebAuthnAccount,
-          })
-          setPasskeyAccount(activeAccount)
-        } else {
-          txLockRef.current = false
-          throw new Error('Passkey credential not found. Please log in again.')
-        }
-      }
-
-      console.log('[SCA] 🚀 writeContractAsync:', {
-        sender: passkeyAddress, to: args.address,
-        fn: args.functionName, args: args.args
+    try {
+      // 1. Preparing parameters (synchronous)
+      const callData = encodeFunctionData({
+        abi: args.abi,
+        functionName: args.functionName,
+        args: args.args,
       })
-      toast.loading('Preparing secure biometric signature...', { id: 'passkey-tx' })
 
-      try {
-        const callData = encodeFunctionData({
-          abi: args.abi,
-          functionName: args.functionName,
-          args: args.args,
-        })
-        console.log('[SCA] CallData:', callData.slice(0, 74) + '...')
+      let txHash: `0x${string}`
 
-        // Send UserOperation — let SDK auto-estimate maxFeePerGas.
-        // Arc Testnet bundler requires minPriorityFee >= 1 Gwei (SDK estimates 0.48 Gwei which is too low).
-        toast.loading('Submitting transaction to bundler...', { id: 'passkey-tx' })
+      if (isEoaConnected && eoaAddress) {
+        // EOA signing — modal can open before since no WebAuthn involved
+        if (hasModal) {
+          modalId = modalContext.openModal({
+            type: 'processing',
+            priority: 'P1',
+            title: `Transaction: ${args.functionName}`,
+            description: 'Processing on-chain action. Please keep this window open.',
+            steps: [
+              { label: 'Preparing Transaction parameters', status: 'done' },
+              { label: 'Requesting Wallet Signature', status: 'active' },
+              { label: 'Broadcasting to Arc Node', status: 'pending' },
+              { label: 'Awaiting Block Finality', status: 'pending' }
+            ],
+            preventBackdropClose: true,
+            preventEscClose: true,
+            showCloseButton: false
+          })
+        }
+        txHash = await eoaWriteContractAsync(args)
+        updateModalSteps(1, 'done')
+        updateModalSteps(2, 'active')
+        
+        // Wait for confirmation on Arc
+        updateModalSteps(2, 'done')
+        updateModalSteps(3, 'active')
+        await client.waitForTransactionReceipt({ hash: txHash })
+      } else if (passkeyAddress && passkeyEmail) {
+        // SCA execution lock
+        if (txLockRef.current) {
+          throw new Error('Transaction already in progress')
+        }
+        txLockRef.current = true
+
+        let activeAccount = passkeyAccount
+        if (!activeAccount) {
+          const storedCred = localStorage.getItem('jobchain_passkey_credential')
+          if (storedCred) {
+            const parsedCred = JSON.parse(storedCred)
+            activeAccount = await toCircleSmartAccount({
+              client,
+              owner: toWebAuthnAccount({ credential: parsedCred }) as WebAuthnAccount,
+            })
+            setPasskeyAccount(activeAccount)
+          } else {
+            txLockRef.current = false
+            throw new Error('Passkey credential not found. Please log in again.')
+          }
+        }
+
+        // SCA: open modal before sendUserOperation
+        if (hasModal) {
+          modalId = modalContext.openModal({
+            type: 'processing',
+            priority: 'P1',
+            title: `Transaction: ${args.functionName}`,
+            description: 'Requesting device biometric signature...',
+            steps: [
+              { label: 'Preparing Transaction parameters', status: 'done' },
+              { label: 'Requesting Wallet Signature', status: 'active' },
+              { label: 'Broadcasting to Arc Node', status: 'pending' },
+              { label: 'Awaiting Block Finality', status: 'pending' }
+            ],
+            preventBackdropClose: true,
+            preventEscClose: true,
+            showCloseButton: false
+          })
+        }
+
+        // Dynamic Fee Estimation via circle_getUserOperationGasPrice (Section 1 of Debug Playbook)
+        let maxPriorityFeePerGas = 1000000000n // fallback 1 Gwei
+        let maxFeePerGas: bigint | undefined = undefined
+
+        try {
+          const resData = await bundlerClient.request({
+            method: 'circle_getUserOperationGasPrice' as any
+          }) as any
+          if (resData?.medium) {
+            maxPriorityFeePerGas = BigInt(resData.medium.maxPriorityFeePerGas)
+            maxFeePerGas = BigInt(resData.medium.maxFeePerGas)
+            console.log('[SCA] Dynamic gas price fetched:', {
+              maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+              maxFeePerGas: maxFeePerGas.toString()
+            })
+          }
+        } catch (e) {
+          console.warn('[SCA] Failed to fetch dynamic gas price, using fallback:', e)
+        }
+
+        console.log('[SCA] 🚀 Calling sendUserOperation (modal open)...')
         const userOpHash = await bundlerClient.sendUserOperation({
           account: activeAccount,
           calls: [{ to: args.address, data: callData }],
           paymaster: true,
-          maxPriorityFeePerGas: 1000000000n, // 1 Gwei — Arc Testnet bundler minimum
+          maxPriorityFeePerGas,
+          maxFeePerGas,
         })
-
         console.log('[SCA] ✅ UserOp sent! Hash:', userOpHash)
-        toast.loading('Waiting for on-chain confirmation...', { id: 'passkey-tx' })
 
-        // Wait for receipt using the standard SDK method
+        // Update modal step to broadcasting & awaiting block finality
+        updateModalSteps(2, 'done')
+        updateModalSteps(3, 'active')
+
+        // Wait for receipt using the standard SDK method with 120s timeout
+        console.log('[SCA] ⏳ Polling for receipt...')
         const { receipt } = await bundlerClient.waitForUserOperationReceipt({
           hash: userOpHash,
           timeout: 120_000, // 2 minutes (Arc has sub-second finality)
           pollingInterval: 2_000,
         })
-        const txHash = receipt.transactionHash
+        
+        console.log('[SCA] ✅ Receipt returned, success status:', receipt.status === 'success')
+        if (receipt.status !== 'success') {
+          throw new Error('UserOperation execution reverted on-chain')
+        }
 
+        console.log('[SCA] ✅ Receipt confirmed:', receipt.transactionHash)
+        txHash = receipt.transactionHash
         txLockRef.current = false
-        console.log('[SCA] 🎉 Confirmed! TxHash:', txHash)
-        toast.success(`Transaction confirmed!`, { id: 'passkey-tx' })
+      } else {
+        throw new Error('No active wallet. Connect or login with Passkey.')
+      }
 
-        // Persist to localStorage for immediate frontend display
+      // Confirmed! Clear ALL modals (including any confirmation/form modals behind)
+      // then show a clean success modal so "Done" truly dismisses everything.
+      if (hasModal) {
+        modalContext.clearQueue()
+        modalContext.openModal({
+          type: 'success',
+          priority: 'P1',
+          title: 'Transaction Confirmed!',
+          description: `Transaction successfully executed and confirmed on Arc Testnet.`,
+          txHash,
+          explorerLink: `https://testnet.arcscan.app/tx/${txHash}`,
+          preventBackdropClose: false,
+          preventEscClose: false,
+          showCloseButton: true
+        })
+      }
+      
+      // Update history in storage
+      if (passkeyEmail) {
         const localHistoryKey = `tx_history_${passkeyEmail}`
         const existingHistory = JSON.parse(localStorage.getItem(localHistoryKey) || '[]')
         existingHistory.unshift({ txHash, functionName: args.functionName, timestamp: new Date().toISOString() })
         localStorage.setItem(localHistoryKey, JSON.stringify(existingHistory))
         window.dispatchEvent(new Event('storage'))
-
-        return txHash
-      } catch (err: any) {
-        txLockRef.current = false
-        console.error('[SCA] ❌ Failed:', err)
-
-        const errMsg = err?.message || err?.details || String(err)
-        const isMemPoolFull = errMsg.includes('Max operations') && errMsg.includes('unstaked')
-
-        if (isMemPoolFull) {
-          // Previous operations with wrong gas prices are stuck in mempool.
-          // The only fix is to wait for them to expire or use a fresh account.
-          toast.error(
-            'Previous transactions are stuck in the bundler queue. ' +
-            'Please log out, wait 5 minutes, then log back in to clear the queue.',
-            { id: 'passkey-tx', duration: 10000 }
-          )
-          throw new Error(
-            'Bundler mempool full: previous operations with incorrect gas prices are stuck. ' +
-            'Log out, wait 5 min, and re-login to clear.'
-          )
-        }
-
-        toast.error(`Transaction failed: ${err?.shortMessage || errMsg.slice(0, 150)}`, { id: 'passkey-tx' })
-        throw err
       }
-    }
 
-    throw new Error('No active wallet. Connect or login with Passkey.')
+      return txHash
+    } catch (err: any) {
+      txLockRef.current = false
+      console.error('[SCA/EOA] ❌ Transaction failed:', err)
+      
+      if (hasModal) {
+        modalContext.clearQueue()
+        const domainErr = mapRawError(err)
+        modalContext.openModal({
+          type: 'error',
+          priority: 'P0',
+          title: domainErr.title,
+          description: domainErr.message,
+          retryAction: domainErr.retryable ? async () => { await writeContractAsync(args); } : undefined
+        })
+      } else {
+        toast.error(`Transaction failed: ${err.message || err}`)
+      }
+      throw err
+    }
   }
 
   const activeAddress = eoaAddress || passkeyAddress
