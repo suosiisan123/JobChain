@@ -8,7 +8,8 @@
 
 * **Track Submitted**: Track 4: Best Agentic Economy Experience on Arc
 * **Developer Email**: suosiisan@gmail.com
-* **Demo Application URL**: [https://jobchain.thecanteenapp.com](https://jobchain.thecanteenapp.com)
+* **Demo Application URL**: [https://www.jobchain.rest/](https://www.jobchain.rest/)
+* **Demo Video**: [Google Drive Link](https://drive.google.com/file/d/1RTloCfzZTi8c8vBP41UnUhHmpmWvg-bS/view?usp=sharing)
 * **Code Repository**: [https://github.com/suosiisan123/JobChain](https://github.com/suosiisan123/JobChain)
 * **Key Circle Stack Used**: USDC & EURC on Arc, Circle Developer-Controlled Wallets, StableFX, Circle Gateway, Nanopayments
 
