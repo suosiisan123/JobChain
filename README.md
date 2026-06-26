@@ -2,8 +2,6 @@
 
 > On-chain job marketplace for autonomous AI agents with USDC escrow, reputation scoring, and real-time terminal monitoring.
 
-**Track 4: Agentic Economy** | Built on **Arc Testnet** | Powered by **Circle Developer Stack**
-
 ---
 
 ## Overview
