@@ -55,6 +55,7 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
   const [reputationTag, setReputationTag] = useState('successful_job')
 
   const [agents, setAgents] = useState<AgentData[]>([])
+  const [filterType, setFilterType] = useState<'my' | 'all'>('my')
   const [loading, setLoading] = useState(false)
   const [loadingAgents, setLoadingAgents] = useState(true)
 
@@ -115,17 +116,80 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
     if (!publicClient) return
     setLoadingAgents(true)
     try {
-      const latestBlock = await publicClient.getBlockNumber()
-      const fromBlock = latestBlock > 9900n ? latestBlock - 9900n : 0n
+      // Get block range to query Transfer events for recent token IDs
+      const tokenIdsSet = new Set<bigint>([0n, 1n, 2n, 3n, 4n, 5n]) // seed with default historical mock IDs
+      try {
+        const latestBlock = await publicClient.getBlockNumber()
+        const chunkSize = 10000n
+        
+        // Fetch Transfer logs from IDENTITY_REGISTRY in parallel chunks to stay within 10,000 blocks limit
+        const logPromises = [
+          publicClient.getLogs({
+            address: IDENTITY_REGISTRY,
+            event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+            fromBlock: latestBlock - chunkSize,
+            toBlock: latestBlock
+          }).catch(() => []),
+          publicClient.getLogs({
+            address: IDENTITY_REGISTRY,
+            event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+            fromBlock: latestBlock - chunkSize * 2n,
+            toBlock: latestBlock - chunkSize
+          }).catch(() => [])
+        ]
+        
+        const logResults = await Promise.all(logPromises)
+        const allLogs = logResults.flat()
+        
+        for (const log of allLogs) {
+          if (log.args && log.args.tokenId !== undefined) {
+            tokenIdsSet.add(BigInt(log.args.tokenId))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to query Transfer logs for token IDs:', err)
+      }
 
-      // Load minted tokens
-      const transferLogs = await publicClient.getLogs({
-        address: IDENTITY_REGISTRY,
-        event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
-        args: { from: '0x0000000000000000000000000000000000000000' as `0x${string}` },
-        fromBlock,
-        toBlock: latestBlock,
-      })
+      const tokenIds = Array.from(tokenIdsSet)
+      
+      let owners: any[] = []
+      // Query owners in batches of 10 to respect Arc RPC rate limits
+      for (let i = 0; i < tokenIds.length; i += 10) {
+        const chunk = tokenIds.slice(i, i + 10)
+        const chunkOwners = await Promise.all(
+          chunk.map(id =>
+            publicClient.readContract({
+              address: IDENTITY_REGISTRY,
+              abi: identityRegistryAbi,
+              functionName: 'ownerOf',
+              args: [id],
+            }).catch(() => null)
+          )
+        )
+        owners = [...owners, ...chunkOwners]
+      }
+
+      // Filter tokenIds that actually exist
+      const activeTokens = tokenIds
+        .map((id, i) => ({ id, owner: owners[i] }))
+        .filter(t => t.owner !== null)
+
+      // Fetch metadata URIs in batched chunks
+      let uris: string[] = []
+      for (let i = 0; i < activeTokens.length; i += 10) {
+        const chunk = activeTokens.slice(i, i + 10)
+        const chunkUris = await Promise.all(
+          chunk.map(t =>
+            publicClient.readContract({
+              address: IDENTITY_REGISTRY,
+              abi: identityRegistryAbi,
+              functionName: 'tokenURI',
+              args: [t.id],
+            }).catch(() => '')
+          )
+        )
+        uris = [...uris, ...chunkUris]
+      }
 
       // Load wallet set database mapping
       let walletsMap: Record<string, { address: string }> = {}
@@ -138,9 +202,10 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
       }
 
       const list: AgentData[] = []
-      for (const log of transferLogs) {
-        const tokenId = log.args.tokenId!
-        const owner = log.args.to!
+      for (let i = 0; i < activeTokens.length; i++) {
+        const tokenId = activeTokens[i].id
+        const owner = activeTokens[i].owner as string
+        const metaURI = uris[i]
         const walletInfo = walletsMap[tokenId.toString()]
 
         let usdcBal = '—'
@@ -175,14 +240,14 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
           let agentName = `Worker #${tokenId.toString()}`
           let agentCaps = 'general'
           try {
-            const metaURI = await publicClient.readContract({
-              address: IDENTITY_REGISTRY,
-              abi: identityRegistryAbi,
-              functionName: 'tokenURI',
-              args: [tokenId],
-            }) as string
             
-            if (metaURI.includes("ipfs://")) {
+            if (metaURI.startsWith("ipfs://bafkreib-name-")) {
+              const parts = metaURI.replace("ipfs://bafkreib-name-", "").split("-caps-")
+              if (parts.length === 2) {
+                agentName = decodeURIComponent(parts[0])
+                agentCaps = decodeURIComponent(parts[1])
+              }
+            } else if (metaURI.includes("ipfs://")) {
               if (tokenId === 0n) {
                 agentName = "Sentinel Analyzer"
                 agentCaps = "solidity, audit, security"
@@ -196,8 +261,15 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
                 agentName = "Data Compliance Pipeline"
                 agentCaps = "data-extract, etl, validation"
               } else {
-                agentName = `Clearing Provider ${tokenId.toString()}`
-                agentCaps = "data, clearing"
+                const cleanPart = metaURI.replace("ipfs://bafkreib-", "")
+                const parts = cleanPart.split("-")
+                if (parts.length >= 2) {
+                  agentName = parts[0]
+                  agentCaps = parts.slice(1).join(", ")
+                } else {
+                  agentName = `Clearing Provider ${tokenId.toString()}`
+                  agentCaps = "data, clearing"
+                }
               }
             }
           } catch { /* ignore */ }
@@ -252,7 +324,7 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
     setLoading(true)
     const tid = toast.loading('Registering Worker Identity on ERC-8004 Registry...')
     try {
-      const metadataURI = `ipfs://bafkreib-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${capabilities.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+      const metadataURI = `ipfs://bafkreib-name-${encodeURIComponent(name)}-caps-${encodeURIComponent(capabilities)}`
       const hash = await writeContractAsync({
         address: IDENTITY_REGISTRY,
         abi: identityRegistryAbi,
@@ -337,6 +409,10 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
   const getScore = (a: AgentData) => a.completedJobs > 0 ? (a.totalScore / a.completedJobs).toFixed(1) : '—'
   const truncateAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`
 
+  const displayedAgents = filterType === 'my'
+    ? agents.filter(a => a.owner.toLowerCase() === address?.toLowerCase())
+    : agents
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
       {/* Breadcrumbs */}
@@ -372,7 +448,7 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
           <RefreshCw size={18} className="spin-animation" style={{ margin: '0 auto 8px auto', display: 'block', color: 'var(--warp-primary)' }} />
           Syncing verified worker list...
         </div>
-      ) : agents.length === 0 ? (
+      ) : displayedAgents.length === 0 ? (
         <div style={{
           textAlign: 'center',
           padding: '40px',
@@ -382,14 +458,75 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
           border: '1px dashed var(--warp-border)',
           fontSize: 12
         }}>
-          No workers registered in the registry. Use the registration panel below to establish a new profile.
+          {filterType === 'my' 
+            ? "You don't own any registered workers yet. Switch to 'All Workers' to see other listings, or use the registration panel below to establish a new profile."
+            : "No workers registered in the registry. Use the registration panel below to establish a new profile."
+          }
+          {filterType === 'my' && (
+            <button 
+              onClick={() => setFilterType('all')}
+              style={{
+                display: 'block',
+                margin: '12px auto 0 auto',
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                padding: '6px 14px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Show All Workers ({agents.length})
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ background: 'rgba(15,16,21,0.45)', border: '1px solid var(--warp-border)', borderRadius: 12, padding: 18 }}>
-          <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Trophy size={14} style={{ color: 'var(--warp-warning)' }} />
-            VERIFIED WORKER DIRECTORY &amp; RANKINGS
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ color: 'var(--warp-muted)', fontSize: 11, fontWeight: 700, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Trophy size={14} style={{ color: 'var(--warp-warning)' }} />
+              VERIFIED WORKER DIRECTORY &amp; RANKINGS
+            </div>
+            
+            <div style={{ display: 'flex', gap: 6, background: 'rgba(0,0,0,0.3)', padding: 3, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <button 
+                onClick={() => setFilterType('my')}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: '5px 12px',
+                  borderRadius: 6,
+                  background: filterType === 'my' ? 'var(--warp-primary)' : 'transparent',
+                  color: filterType === 'my' ? '#070709' : 'var(--warp-muted)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                My Workers
+              </button>
+              <button 
+                onClick={() => setFilterType('all')}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: '5px 12px',
+                  borderRadius: 6,
+                  background: filterType === 'all' ? 'var(--warp-primary)' : 'transparent',
+                  color: filterType === 'all' ? '#070709' : 'var(--warp-muted)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                All Workers ({agents.length})
+              </button>
+            </div>
           </div>
+
           <table className="data-table">
             <thead>
               <tr>
@@ -411,7 +548,7 @@ export function WorkersTab({ devMode }: WorkersTabProps) {
               </tr>
             </thead>
             <tbody>
-              {agents.map(a => (
+              {displayedAgents.map(a => (
                 <tr key={a.id}>
                   <td style={{ color: 'var(--warp-primary)' }}>#{a.id}</td>
                   <td style={{ color: 'var(--warp-text)', fontWeight: 600 }}>{a.name}</td>
